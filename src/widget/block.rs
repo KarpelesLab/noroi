@@ -278,22 +278,22 @@ impl Widget for Block {
         }
 
         // Title on the top edge, inset by one cell past the corners.
-        if let Some(title) = &self.title {
-            if area.width > 2 {
-                let avail = area.width.saturating_sub(2);
-                let tw = title.width().min(avail);
-                let off = align_offset(self.title_alignment, avail, tw);
-                let mut tx = area.x + 1 + off;
-                let ty = area.y;
-                let limit = area.x + 1 + avail;
-                for span in &title.spans {
-                    if tx >= limit {
-                        break;
-                    }
-                    let style = bs.patch(span.style);
-                    let end = buf.set_str(tx, ty, &span.content, style, limit - tx);
-                    tx = end;
+        if let Some(title) = &self.title
+            && area.width > 2
+        {
+            let avail = area.width.saturating_sub(2);
+            let tw = title.width().min(avail);
+            let off = align_offset(self.title_alignment, avail, tw);
+            let mut tx = area.x + 1 + off;
+            let ty = area.y;
+            let limit = area.x + 1 + avail;
+            for span in &title.spans {
+                if tx >= limit {
+                    break;
                 }
+                let style = bs.patch(span.style);
+                let end = buf.set_str(tx, ty, &span.content, style, limit - tx);
+                tx = end;
             }
         }
     }

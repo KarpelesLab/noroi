@@ -237,12 +237,12 @@ impl Buffer {
     pub fn set_char(&mut self, x: u16, y: u16, c: char, style: Style) -> u16 {
         let w = char_width(c);
         if w == 0 {
-            if x > self.area.x {
-                if let Some(prev) = self.get_mut(x - 1, y) {
-                    let mut s = String::from(prev.symbol());
-                    s.push(c);
-                    prev.set_symbol(&s);
-                }
+            if x > self.area.x
+                && let Some(prev) = self.get_mut(x - 1, y)
+            {
+                let mut s = String::from(prev.symbol());
+                s.push(c);
+                prev.set_symbol(&s);
             }
             return 0;
         }
@@ -253,12 +253,12 @@ impl Buffer {
             }
             None => return 0,
         }
-        if w == 2 {
-            if let Some(next) = self.get_mut(x + 1, y) {
-                next.set_char(' ');
-                next.set_style(style);
-                next.continuation = true;
-            }
+        if w == 2
+            && let Some(next) = self.get_mut(x + 1, y)
+        {
+            next.set_char(' ');
+            next.set_style(style);
+            next.continuation = true;
         }
         w
     }
@@ -309,10 +309,10 @@ impl Buffer {
         if self.area != previous.area {
             for y in self.area.y..self.area.bottom() {
                 for x in self.area.x..self.area.right() {
-                    if let Some(c) = self.get(x, y) {
-                        if !c.continuation {
-                            out.push((Point::new(x, y), c));
-                        }
+                    if let Some(c) = self.get(x, y)
+                        && !c.continuation
+                    {
+                        out.push((Point::new(x, y), c));
                     }
                 }
             }

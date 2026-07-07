@@ -141,13 +141,7 @@ fn solve(total: u16, constraints: &[Constraint]) -> Vec<u16> {
         sizes[i] = match *c {
             Constraint::Length(v) => v as u32,
             Constraint::Percentage(p) => (p as u32 * total).div_ceil(100).min(total),
-            Constraint::Ratio(a, b) => {
-                if b == 0 {
-                    0
-                } else {
-                    ((a as u32 * total) / b).min(total)
-                }
-            }
+            Constraint::Ratio(a, b) => (a * total).checked_div(b).unwrap_or(0).min(total),
             Constraint::Min(v) => v as u32,
             Constraint::Max(v) => v as u32,
             Constraint::Fill(w) => {
@@ -163,10 +157,13 @@ fn solve(total: u16, constraints: &[Constraint]) -> Vec<u16> {
     if used < total {
         let mut extra = total - used;
         if any_fill {
-            let weight_sum: u32 = fill_weights.iter().sum();
-            if weight_sum > 0 {
+            // `.max(1)` keeps the divisor safe when every fill has weight 0
+            // (in which case the loops below simply distribute nothing).
+            let weight_sum: u32 = fill_weights.iter().sum::<u32>().max(1);
+            {
                 // Largest-remainder apportionment for fairness.
                 let mut remainders: Vec<(usize, u32)> = Vec::new();
+                let mut distributed: u32 = 0;
                 for (i, &w) in fill_weights.iter().enumerate() {
                     if w == 0 {
                         continue;
@@ -174,14 +171,10 @@ fn solve(total: u16, constraints: &[Constraint]) -> Vec<u16> {
                     let exact = extra * w;
                     let base = exact / weight_sum;
                     sizes[i] += base;
+                    distributed += base;
                     remainders.push((i, exact % weight_sum));
                 }
-                let mut distributed: u32 = fill_weights
-                    .iter()
-                    .filter(|&&w| w > 0)
-                    .map(|&w| (extra * w) / weight_sum)
-                    .sum();
-                remainders.sort_by(|a, b| b.1.cmp(&a.1));
+                remainders.sort_by_key(|&(_, r)| core::cmp::Reverse(r));
                 let mut ri = 0;
                 while distributed < extra && !remainders.is_empty() {
                     let (idx, _) = remainders[ri % remainders.len()];

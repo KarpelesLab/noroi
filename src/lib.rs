@@ -68,6 +68,8 @@ pub mod widget;
 pub mod backend;
 #[cfg(feature = "std")]
 pub mod events;
+#[cfg(feature = "capi")]
+pub mod ffi;
 #[cfg(feature = "std")]
 mod sys;
 #[cfg(feature = "std")]

@@ -14,9 +14,10 @@ use core::fmt;
 /// downgrades gracefully: on a 16-color terminal a [`Color::Rgb`] is mapped to
 /// the nearest indexed color, and so on. [`Color::Reset`] restores the
 /// terminal's own default (distinct from any specific color).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Color {
     /// Use the terminal's configured default color.
+    #[default]
     Reset,
     /// Black (ANSI 0).
     Black,
@@ -54,12 +55,6 @@ pub enum Color {
     Indexed(u8),
     /// A 24-bit true color.
     Rgb(u8, u8, u8),
-}
-
-impl Default for Color {
-    fn default() -> Self {
-        Color::Reset
-    }
 }
 
 impl Color {
@@ -213,6 +208,11 @@ impl Attributes {
     /// The raw bitset (useful for backends).
     pub const fn bits(self) -> u16 {
         self.0
+    }
+
+    /// Reconstruct an attribute set from a raw bitset (unknown bits ignored).
+    pub const fn from_bits(bits: u16) -> Attributes {
+        Attributes(bits & 0xff)
     }
 }
 

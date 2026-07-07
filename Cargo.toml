@@ -18,6 +18,8 @@ default = ["std"]
 # to build only the `#![no_std]` + `alloc` core: buffers, styling, input parsing,
 # layout and widgets.
 std = []
+# The `capi` feature exposes a C ABI (see include/noroi.h). It implies `std`.
+capi = ["std"]
 
 [[bin]]
 name = "noroidemo"

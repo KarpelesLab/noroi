@@ -134,18 +134,43 @@ impl<B: Backend> Terminal<B> {
     where
         F: FnOnce(&mut Frame<'_>),
     {
+        self.start_frame()?;
+        let mut frame = Frame { buffer: &mut self.back, cursor: None };
+        render(&mut frame);
+        self.cursor = frame.cursor;
+        self.finish_frame()
+    }
+
+    /// Begin a manually-driven frame: sync the size and clear the back buffer.
+    ///
+    /// This is the imperative counterpart to [`draw`](Self::draw), used by the
+    /// C bindings and by callers who cannot express rendering as a closure.
+    /// Paint via [`frame_buffer_mut`](Self::frame_buffer_mut), optionally call
+    /// [`set_frame_cursor`](Self::set_frame_cursor), then
+    /// [`finish_frame`](Self::finish_frame).
+    pub fn start_frame(&mut self) -> io::Result<()> {
         self.sync_size()?;
         self.back.reset();
         self.cursor = None;
+        Ok(())
+    }
 
-        let mut frame = Frame { buffer: &mut self.back, cursor: None };
-        render(&mut frame);
-        let cursor = frame.cursor;
+    /// The buffer being painted for the current manual frame.
+    pub fn frame_buffer_mut(&mut self) -> &mut Buffer {
+        &mut self.back
+    }
 
+    /// Request the hardware cursor position for the current manual frame.
+    pub fn set_frame_cursor(&mut self, position: Point) {
+        self.cursor = Some(position);
+    }
+
+    /// Finish a manual frame: diff against the screen, write changes, position
+    /// the cursor and flush.
+    pub fn finish_frame(&mut self) -> io::Result<()> {
         let diff = self.back.diff(&self.front);
         self.backend.draw(&diff)?;
-
-        match cursor {
+        match self.cursor {
             Some(p) => {
                 self.backend.set_cursor(p.x, p.y)?;
                 self.backend.show_cursor()?;
@@ -153,8 +178,6 @@ impl<B: Backend> Terminal<B> {
             None => self.backend.hide_cursor()?,
         }
         self.backend.flush()?;
-
-        // The freshly painted buffer is now what's on screen.
         mem::swap(&mut self.front, &mut self.back);
         Ok(())
     }

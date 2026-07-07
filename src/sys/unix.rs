@@ -140,7 +140,7 @@ pub fn open_tty() -> io::Result<Tty> {
     let mut t = Termios::zeroed();
     let rc = unsafe { tcgetattr(file.as_raw_fd(), &mut t) };
     if rc != 0 {
-        return Err(io::Error::new(io::ErrorKind::Other, "/dev/tty is not a terminal"));
+        return Err(io::Error::other("/dev/tty is not a terminal"));
     }
     Ok(Tty { file })
 }

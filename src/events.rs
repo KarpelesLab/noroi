@@ -114,12 +114,12 @@ fn reader_loop(mut reader: Tty, tx: mpsc::Sender<Event>, shutdown: Arc<AtomicBoo
                     }
                 }
                 // …and check for a resize.
-                if let Ok(size) = sys::window_size(fd) {
-                    if size != last_size {
-                        last_size = size;
-                        if tx.send(Event::Resize(size.0, size.1)).is_err() {
-                            return;
-                        }
+                if let Ok(size) = sys::window_size(fd)
+                    && size != last_size
+                {
+                    last_size = size;
+                    if tx.send(Event::Resize(size.0, size.1)).is_err() {
+                        return;
                     }
                 }
             }
