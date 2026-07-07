@@ -19,7 +19,7 @@
 //! assert_eq!(ed.handle_key(KeyEvent::new(KeyCode::Enter)), LineOutcome::Submitted);
 //! ```
 
-use crate::buffer::{char_width, Buffer};
+use crate::buffer::{Buffer, char_width};
 use crate::event::{KeyCode, KeyEvent, Modifiers};
 use crate::geom::{Point, Rect};
 use crate::style::Style;
@@ -58,7 +58,10 @@ pub struct LineEditor {
 impl LineEditor {
     /// A new, empty editor with a default history capacity.
     pub fn new() -> Self {
-        LineEditor { max_history: 256, ..Default::default() }
+        LineEditor {
+            max_history: 256,
+            ..Default::default()
+        }
     }
 
     /// The current text.
@@ -416,7 +419,10 @@ impl LineEditor {
             x += 1;
         }
 
-        let cursor_x = area.x + cursor_col.saturating_sub(self.scroll).min(width.saturating_sub(1));
+        let cursor_x = area.x
+            + cursor_col
+                .saturating_sub(self.scroll)
+                .min(width.saturating_sub(1));
         Point::new(cursor_x, area.y)
     }
 }

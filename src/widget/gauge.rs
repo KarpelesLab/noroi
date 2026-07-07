@@ -4,7 +4,7 @@ use crate::buffer::Buffer;
 use crate::geom::Rect;
 use crate::style::{Color, Style};
 use crate::widget::block::Block;
-use crate::widget::{align_offset, Alignment, Widget};
+use crate::widget::{Alignment, Widget, align_offset};
 use alloc::string::String;
 
 /// Fractional block glyphs from empty (1/8) to full, for smooth bar edges.
@@ -134,7 +134,11 @@ impl Widget for Gauge {
             }
         };
         if !label.is_empty() {
-            let lw = label.chars().map(crate::buffer::char_width).sum::<u16>().min(width);
+            let lw = label
+                .chars()
+                .map(crate::buffer::char_width)
+                .sum::<u16>()
+                .min(width);
             let start = area.x + align_offset(Alignment::Center, width, lw);
             // Draw each label char, choosing a legible fg against whatever the
             // bar painted underneath.
@@ -144,7 +148,11 @@ impl Widget for Gauge {
                     break;
                 }
                 let on_fill = (x - area.x) < full || ((x - area.x) == full && partial > 0);
-                let base = if on_fill { self.filled_style } else { self.unfilled_style };
+                let base = if on_fill {
+                    self.filled_style
+                } else {
+                    self.unfilled_style
+                };
                 let style = Style {
                     fg: self.label_style.fg.or(base.fg),
                     bg: base.bg,

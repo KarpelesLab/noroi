@@ -26,12 +26,18 @@ pub struct Span {
 impl Span {
     /// A span with the default (empty) style.
     pub fn raw(content: impl Into<String>) -> Self {
-        Span { content: content.into(), style: Style::RESET }
+        Span {
+            content: content.into(),
+            style: Style::RESET,
+        }
     }
 
     /// A span with an explicit style.
     pub fn styled(content: impl Into<String>, style: Style) -> Self {
-        Span { content: content.into(), style }
+        Span {
+            content: content.into(),
+            style,
+        }
     }
 
     /// The display width of the span in cells.
@@ -64,17 +70,26 @@ pub struct Line {
 impl Line {
     /// A line from a single unstyled string.
     pub fn raw(content: impl Into<String>) -> Self {
-        Line { spans: vec![Span::raw(content)], alignment: Alignment::Left }
+        Line {
+            spans: vec![Span::raw(content)],
+            alignment: Alignment::Left,
+        }
     }
 
     /// A line from a single styled string.
     pub fn styled(content: impl Into<String>, style: Style) -> Self {
-        Line { spans: vec![Span::styled(content, style)], alignment: Alignment::Left }
+        Line {
+            spans: vec![Span::styled(content, style)],
+            alignment: Alignment::Left,
+        }
     }
 
     /// A line from a list of spans.
     pub fn from_spans(spans: impl IntoIterator<Item = Span>) -> Self {
-        Line { spans: spans.into_iter().collect(), alignment: Alignment::Left }
+        Line {
+            spans: spans.into_iter().collect(),
+            alignment: Alignment::Left,
+        }
     }
 
     /// Set the alignment (builder style).
@@ -122,7 +137,10 @@ impl From<String> for Line {
 
 impl From<Span> for Line {
     fn from(span: Span) -> Self {
-        Line { spans: vec![span], alignment: Alignment::Left }
+        Line {
+            spans: vec![span],
+            alignment: Alignment::Left,
+        }
     }
 }
 
@@ -140,12 +158,18 @@ impl Text {
     pub fn raw(content: impl Into<Cow<'static, str>>) -> Self {
         let content = content.into();
         let lines = content.split('\n').map(Line::raw).collect();
-        Text { lines, style: Style::RESET }
+        Text {
+            lines,
+            style: Style::RESET,
+        }
     }
 
     /// Build a [`Text`] from explicit lines.
     pub fn from_lines(lines: impl IntoIterator<Item = Line>) -> Self {
-        Text { lines: lines.into_iter().collect(), style: Style::RESET }
+        Text {
+            lines: lines.into_iter().collect(),
+            style: Style::RESET,
+        }
     }
 
     /// Set the base style patched beneath every span.
@@ -168,7 +192,10 @@ impl Text {
 impl From<&str> for Text {
     fn from(s: &str) -> Self {
         let lines = s.split('\n').map(Line::raw).collect();
-        Text { lines, style: Style::RESET }
+        Text {
+            lines,
+            style: Style::RESET,
+        }
     }
 }
 
@@ -180,6 +207,9 @@ impl From<String> for Text {
 
 impl From<Line> for Text {
     fn from(line: Line) -> Self {
-        Text { lines: vec![line], style: Style::RESET }
+        Text {
+            lines: vec![line],
+            style: Style::RESET,
+        }
     }
 }

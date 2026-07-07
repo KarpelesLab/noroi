@@ -40,7 +40,10 @@ impl Grapheme {
         if bytes.len() <= 14 {
             let mut buf = [0u8; 14];
             buf[..bytes.len()].copy_from_slice(bytes);
-            Grapheme::Inline { buf, len: bytes.len() as u8 }
+            Grapheme::Inline {
+                buf,
+                len: bytes.len() as u8,
+            }
         } else {
             Grapheme::Heap(Box::from(s))
         }
@@ -75,7 +78,10 @@ impl Cell {
     /// A blank cell: a space with the default style.
     pub fn blank() -> Cell {
         Cell {
-            symbol: Grapheme::Inline { buf: *b"           \0\0\0", len: 1 },
+            symbol: Grapheme::Inline {
+                buf: *b"           \0\0\0",
+                len: 1,
+            },
             style: Style::RESET,
             continuation: false,
         }
@@ -83,7 +89,11 @@ impl Cell {
 
     /// Create a cell holding a single character with default style.
     pub fn from_char(c: char) -> Self {
-        Cell { symbol: Grapheme::from_char(c), style: Style::RESET, continuation: false }
+        Cell {
+            symbol: Grapheme::from_char(c),
+            style: Style::RESET,
+            continuation: false,
+        }
     }
 
     /// The primary character of the cell (first scalar of a cluster).
@@ -105,7 +115,11 @@ impl Cell {
 
     /// Set the cell to a grapheme cluster (multiple scalars), preserving style.
     pub fn set_symbol(&mut self, s: &str) -> &mut Self {
-        self.symbol = if s.is_empty() { Grapheme::from_char(' ') } else { Grapheme::from_str(s) };
+        self.symbol = if s.is_empty() {
+            Grapheme::from_char(' ')
+        } else {
+            Grapheme::from_str(s)
+        };
         self.continuation = false;
         self
     }
@@ -166,12 +180,18 @@ pub struct Buffer {
 impl Buffer {
     /// Create a buffer covering `area`, filled with blank cells.
     pub fn empty(area: Rect) -> Self {
-        Buffer { area, cells: vec![Cell::blank(); area.area()] }
+        Buffer {
+            area,
+            cells: vec![Cell::blank(); area.area()],
+        }
     }
 
     /// Create a buffer covering `area`, filled with `cell`.
     pub fn filled(area: Rect, cell: Cell) -> Self {
-        Buffer { area, cells: vec![cell; area.area()] }
+        Buffer {
+            area,
+            cells: vec![cell; area.area()],
+        }
     }
 
     /// The region this buffer covers.

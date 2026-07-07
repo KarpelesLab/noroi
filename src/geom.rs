@@ -81,21 +81,39 @@ pub struct Rect {
 
 impl Rect {
     /// The empty rectangle at the origin.
-    pub const ZERO: Rect = Rect { x: 0, y: 0, width: 0, height: 0 };
+    pub const ZERO: Rect = Rect {
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+    };
 
     /// Create a rectangle.
     pub const fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Rect { x, y, width, height }
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Create a rectangle at the origin with the given size.
     pub const fn from_size(size: Size) -> Self {
-        Rect { x: 0, y: 0, width: size.width, height: size.height }
+        Rect {
+            x: 0,
+            y: 0,
+            width: size.width,
+            height: size.height,
+        }
     }
 
     /// The size of the rectangle.
     pub const fn size(self) -> Size {
-        Size { width: self.width, height: self.height }
+        Size {
+            width: self.width,
+            height: self.height,
+        }
     }
 
     /// The exclusive right edge (`x + width`), saturating.
@@ -110,7 +128,10 @@ impl Rect {
 
     /// The top-left corner.
     pub const fn top_left(self) -> Point {
-        Point { x: self.x, y: self.y }
+        Point {
+            x: self.x,
+            y: self.y,
+        }
     }
 
     /// Number of cells the rectangle covers.
@@ -156,9 +177,19 @@ impl Rect {
         let x2 = self.right().min(other.right());
         let y2 = self.bottom().min(other.bottom());
         if x2 <= x1 || y2 <= y1 {
-            Rect { x: x1, y: y1, width: 0, height: 0 }
+            Rect {
+                x: x1,
+                y: y1,
+                width: 0,
+                height: 0,
+            }
         } else {
-            Rect { x: x1, y: y1, width: x2 - x1, height: y2 - y1 }
+            Rect {
+                x: x1,
+                y: y1,
+                width: x2 - x1,
+                height: y2 - y1,
+            }
         }
     }
 
@@ -173,7 +204,12 @@ impl Rect {
         let h = size.height.min(self.height);
         let x = self.x + (self.width - w) / 2;
         let y = self.y + (self.height - h) / 2;
-        Rect { x, y, width: w, height: h }
+        Rect {
+            x,
+            y,
+            width: w,
+            height: h,
+        }
     }
 }
 

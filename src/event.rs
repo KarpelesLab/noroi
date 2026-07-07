@@ -119,7 +119,10 @@ pub struct KeyEvent {
 impl KeyEvent {
     /// A key with no modifiers.
     pub const fn new(code: KeyCode) -> Self {
-        KeyEvent { code, modifiers: Modifiers::NONE }
+        KeyEvent {
+            code,
+            modifiers: Modifiers::NONE,
+        }
     }
 
     /// A key with the given modifiers.

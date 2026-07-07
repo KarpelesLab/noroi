@@ -22,7 +22,7 @@ use crate::geom::{Point, Rect};
 use crate::style::{Attributes, Color, Style};
 use crate::terminal::Terminal;
 use crate::widget::{Block, BorderType, Gauge, Line, Widget};
-use std::ffi::{c_char, c_int, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_int};
 use std::time::Duration;
 
 /// Opaque terminal handle returned by [`noroi_open`].
@@ -75,7 +75,11 @@ fn decode_color(v: u32) -> Option<Color> {
 }
 
 fn make_style(fg: u32, bg: u32, attrs: u16) -> Style {
-    Style { fg: decode_color(fg), bg: decode_color(bg), attributes: Attributes::from_bits(attrs) }
+    Style {
+        fg: decode_color(fg),
+        bg: decode_color(bg),
+        attributes: Attributes::from_bits(attrs),
+    }
 }
 
 fn border_type(kind: c_int) -> BorderType {
@@ -140,8 +144,14 @@ pub unsafe extern "C" fn noroi_close(t: *mut NoroiTerminal) {
 /// # Safety
 /// `cols` and `rows` must be valid, writable pointers (or NULL to skip).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn noroi_size(t: *mut NoroiTerminal, cols: *mut u16, rows: *mut u16) -> c_int {
-    let Some(h) = (unsafe { handle(t) }) else { return -1 };
+pub unsafe extern "C" fn noroi_size(
+    t: *mut NoroiTerminal,
+    cols: *mut u16,
+    rows: *mut u16,
+) -> c_int {
+    let Some(h) = (unsafe { handle(t) }) else {
+        return -1;
+    };
     let size = h.term.size();
     unsafe {
         if !cols.is_null() {
@@ -162,7 +172,9 @@ pub unsafe extern "C" fn noroi_size(t: *mut NoroiTerminal, cols: *mut u16, rows:
 /// `t` must be NULL or a valid handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn noroi_begin(t: *mut NoroiTerminal) -> c_int {
-    let Some(h) = (unsafe { handle(t) }) else { return -1 };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return -1;
+    };
     match h.term.start_frame() {
         Ok(()) => 0,
         Err(_) => -1,
@@ -175,7 +187,9 @@ pub unsafe extern "C" fn noroi_begin(t: *mut NoroiTerminal) -> c_int {
 /// `t` must be NULL or a valid handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn noroi_end(t: *mut NoroiTerminal) -> c_int {
-    let Some(h) = (unsafe { handle(t) }) else { return -1 };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return -1;
+    };
     match h.term.finish_frame() {
         Ok(()) => 0,
         Err(_) => -1,
@@ -210,10 +224,14 @@ pub unsafe extern "C" fn noroi_text(
     attrs: u16,
     max_width: u16,
 ) {
-    let Some(h) = (unsafe { handle(t) }) else { return };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return;
+    };
     let s = unsafe { cstr(text) };
     let style = make_style(fg, bg, attrs);
-    h.term.frame_buffer_mut().set_str(x, y, &s, style, max_width);
+    h.term
+        .frame_buffer_mut()
+        .set_str(x, y, &s, style, max_width);
 }
 
 /// Fill a rectangle with `ch` (the first character of a UTF-8 string).
@@ -232,7 +250,9 @@ pub unsafe extern "C" fn noroi_fill(
     bg: u32,
     attrs: u16,
 ) {
-    let Some(h) = (unsafe { handle(t) }) else { return };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return;
+    };
     let s = unsafe { cstr(ch) };
     let c = s.chars().next().unwrap_or(' ');
     let style = make_style(fg, bg, attrs);
@@ -262,9 +282,13 @@ pub unsafe extern "C" fn noroi_box(
     bg: u32,
     attrs: u16,
 ) {
-    let Some(h) = (unsafe { handle(t) }) else { return };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return;
+    };
     let border_style = make_style(fg, noroi_color_none(), attrs);
-    let mut block = Block::bordered().border_type(border_type(border)).border_style(border_style);
+    let mut block = Block::bordered()
+        .border_type(border_type(border))
+        .border_style(border_style);
     if let Some(bgc) = decode_color(bg) {
         block = block.style(Style::new().bg(bgc));
     }
@@ -293,7 +317,9 @@ pub unsafe extern "C" fn noroi_gauge(
     unfilled_fg: u32,
     unfilled_bg: u32,
 ) {
-    let Some(h) = (unsafe { handle(t) }) else { return };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return;
+    };
     let gauge = Gauge::new()
         .ratio(ratio)
         .filled_style(make_style(filled_fg, filled_bg, 0))
@@ -395,7 +421,9 @@ pub unsafe extern "C" fn noroi_poll_event(
     timeout_ms: c_int,
     out: *mut NoroiEvent,
 ) -> c_int {
-    let Some(h) = (unsafe { handle(t) }) else { return -1 };
+    let Some(h) = (unsafe { handle(t) }) else {
+        return -1;
+    };
     if out.is_null() {
         return -1;
     }

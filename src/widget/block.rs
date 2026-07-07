@@ -4,7 +4,7 @@ use crate::buffer::Buffer;
 use crate::geom::Rect;
 use crate::style::Style;
 use crate::widget::text::Line;
-use crate::widget::{align_offset, Alignment, Widget};
+use crate::widget::{Alignment, Widget, align_offset};
 
 /// Which edges of a [`Block`] draw a border, as a bitset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -115,12 +115,22 @@ pub struct Padding {
 impl Padding {
     /// Equal padding on all four sides.
     pub const fn uniform(n: u16) -> Self {
-        Padding { left: n, right: n, top: n, bottom: n }
+        Padding {
+            left: n,
+            right: n,
+            top: n,
+            bottom: n,
+        }
     }
 
     /// Separate horizontal and vertical padding.
     pub const fn symmetric(horizontal: u16, vertical: u16) -> Self {
-        Padding { left: horizontal, right: horizontal, top: vertical, bottom: vertical }
+        Padding {
+            left: horizontal,
+            right: horizontal,
+            top: vertical,
+            bottom: vertical,
+        }
     }
 }
 

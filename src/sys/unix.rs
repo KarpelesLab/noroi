@@ -8,8 +8,10 @@
 #![allow(non_camel_case_types)]
 
 #[cfg(not(any(target_os = "linux", target_os = "android")))]
-compile_error!("noroi's unix backend currently targets Linux/Android ABI; \
-other unixes need their own termios layout (contributions welcome)");
+compile_error!(
+    "noroi's unix backend currently targets Linux/Android ABI; \
+other unixes need their own termios layout (contributions welcome)"
+);
 
 use core::ffi::{c_int, c_uchar, c_uint, c_ulong, c_void};
 use std::fs::{File, OpenOptions};
@@ -109,7 +111,9 @@ impl Tty {
     /// Clone the underlying handle (shares the same open file description, and
     /// thus the same terminal modes). Used to hand a reader to a thread.
     pub fn try_clone(&self) -> io::Result<Tty> {
-        Ok(Tty { file: self.file.try_clone()? })
+        Ok(Tty {
+            file: self.file.try_clone()?,
+        })
     }
 
     /// The raw file descriptor.

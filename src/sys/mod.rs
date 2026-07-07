@@ -10,8 +10,10 @@
 mod unix;
 
 #[cfg(unix)]
-pub use unix::{open_tty, window_size, RawModeGuard, Tty};
+pub use unix::{RawModeGuard, Tty, open_tty, window_size};
 
 #[cfg(not(unix))]
-compile_error!("the `std` feature of noroi currently supports unix targets only; \
-build with --no-default-features for the platform-independent core");
+compile_error!(
+    "the `std` feature of noroi currently supports unix targets only; \
+build with --no-default-features for the platform-independent core"
+);

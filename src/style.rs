@@ -275,7 +275,11 @@ pub struct Style {
 
 impl Style {
     /// An empty style that changes nothing.
-    pub const RESET: Style = Style { fg: None, bg: None, attributes: Attributes::NONE };
+    pub const RESET: Style = Style {
+        fg: None,
+        bg: None,
+        attributes: Attributes::NONE,
+    };
 
     /// A fresh, empty style (equivalent to [`Style::RESET`]).
     pub const fn new() -> Self {

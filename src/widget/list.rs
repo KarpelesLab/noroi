@@ -1,6 +1,6 @@
 //! [`List`]: a scrollable, selectable vertical list of items.
 
-use crate::buffer::{char_width, Buffer};
+use crate::buffer::{Buffer, char_width};
 use crate::geom::Rect;
 use crate::style::{Color, Style};
 use crate::widget::block::Block;
@@ -20,7 +20,10 @@ pub struct ListItem {
 impl ListItem {
     /// An item from any text-like value.
     pub fn new(content: impl Into<Text>) -> Self {
-        ListItem { content: content.into(), style: Style::RESET }
+        ListItem {
+            content: content.into(),
+            style: Style::RESET,
+        }
     }
 
     /// Per-item base style.
@@ -255,7 +258,13 @@ impl StatefulWidget for List {
                 let mut x = text_x;
                 for span in &line.spans {
                     let style = row_style.patch(span.style);
-                    let end = buf.set_str(x, ly, &span.content, style, text_w.saturating_sub(x - text_x));
+                    let end = buf.set_str(
+                        x,
+                        ly,
+                        &span.content,
+                        style,
+                        text_w.saturating_sub(x - text_x),
+                    );
                     x = end;
                 }
             }

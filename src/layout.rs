@@ -62,7 +62,12 @@ pub struct Layout {
 impl Layout {
     /// Start a layout in the given direction with no constraints.
     pub fn new(direction: Direction) -> Self {
-        Layout { direction, constraints: Vec::new(), margin: 0, spacing: 0 }
+        Layout {
+            direction,
+            constraints: Vec::new(),
+            margin: 0,
+            spacing: 0,
+        }
     }
 
     /// Shorthand for a horizontal (column) layout.
@@ -229,7 +234,10 @@ fn solve(total: u16, constraints: &[Constraint]) -> Vec<u16> {
         }
     }
 
-    sizes.into_iter().map(|v| v.min(u16::MAX as u32) as u16).collect()
+    sizes
+        .into_iter()
+        .map(|v| v.min(u16::MAX as u32) as u16)
+        .collect()
 }
 
 // ============================================================================
@@ -343,7 +351,11 @@ impl Grid {
                 .split(row_rect);
             cells.extend(col_rects);
         }
-        GridCells { cells, nrows, ncols }
+        GridCells {
+            cells,
+            nrows,
+            ncols,
+        }
     }
 }
 
@@ -387,7 +399,14 @@ mod tests {
 
     #[test]
     fn header_body_footer() {
-        let s = solve(10, &[Constraint::Length(1), Constraint::Fill(1), Constraint::Length(1)]);
+        let s = solve(
+            10,
+            &[
+                Constraint::Length(1),
+                Constraint::Fill(1),
+                Constraint::Length(1),
+            ],
+        );
         assert_eq!(s, vec![1, 8, 1]);
     }
 
@@ -400,7 +419,10 @@ mod tests {
 
     #[test]
     fn percentage() {
-        let s = solve(100, &[Constraint::Percentage(25), Constraint::Percentage(75)]);
+        let s = solve(
+            100,
+            &[Constraint::Percentage(25), Constraint::Percentage(75)],
+        );
         assert_eq!(s, vec![25, 75]);
     }
 
@@ -431,7 +453,8 @@ mod tests {
 
     #[test]
     fn spacer_centers() {
-        let rows = column([spacer(), Constraint::Length(3), spacer()]).split(Rect::new(0, 0, 10, 9));
+        let rows =
+            column([spacer(), Constraint::Length(3), spacer()]).split(Rect::new(0, 0, 10, 9));
         assert_eq!(rows[1], Rect::new(0, 3, 10, 3));
     }
 

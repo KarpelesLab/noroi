@@ -26,7 +26,7 @@ mod list;
 mod paragraph;
 mod text;
 
-pub use block::{BorderType, Borders, Block, Padding};
+pub use block::{Block, BorderType, Borders, Padding};
 pub use button::Button;
 pub use clear::Clear;
 pub use gauge::Gauge;

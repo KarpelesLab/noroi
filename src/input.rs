@@ -127,11 +127,17 @@ fn parse_one(buf: &[u8], force: bool) -> Step {
         0x01..=0x1a => {
             // Ctrl-a .. Ctrl-z (0x08/0x09/0x0d handled above).
             let c = (first - 1 + b'a') as char;
-            Step::Event(Event::Key(KeyEvent::with(KeyCode::Char(c), Modifiers::CTRL)), 1)
+            Step::Event(
+                Event::Key(KeyEvent::with(KeyCode::Char(c), Modifiers::CTRL)),
+                1,
+            )
         }
         0x1c..=0x1f => {
             let c = (first + 0x40) as char; // Ctrl-\ ] ^ _
-            Step::Event(Event::Key(KeyEvent::with(KeyCode::Char(c), Modifiers::CTRL)), 1)
+            Step::Event(
+                Event::Key(KeyEvent::with(KeyCode::Char(c), Modifiers::CTRL)),
+                1,
+            )
         }
         _ => parse_utf8(buf, Modifiers::NONE, 0),
     }
@@ -150,7 +156,10 @@ fn parse_utf8(buf: &[u8], mods: Modifiers, start: usize) -> Step {
     }
     match core::str::from_utf8(&buf[start..start + len]) {
         Ok(s) => match s.chars().next() {
-            Some(c) => Step::Event(Event::Key(KeyEvent::with(KeyCode::Char(c), mods)), start + len),
+            Some(c) => Step::Event(
+                Event::Key(KeyEvent::with(KeyCode::Char(c), mods)),
+                start + len,
+            ),
             None => Step::Skip(start + len),
         },
         Err(_) => Step::Skip(start + 1),
@@ -239,14 +248,23 @@ fn parse_csi(buf: &[u8], force: bool) -> Step {
         i += 1;
     }
     if i >= buf.len() {
-        return if force { Step::Skip(buf.len()) } else { Step::Incomplete };
+        return if force {
+            Step::Skip(buf.len())
+        } else {
+            Step::Incomplete
+        };
     }
     let final_byte = buf[i];
     let params = parse_params(&buf[2..i]);
     let used = i + 1;
 
     // The second parameter, if present, carries the modifier mask (base 1).
-    let modifier = params.get(1).copied().filter(|&v| v > 0).map(|v| Modifiers::from_xterm_mask((v - 1) as u8)).unwrap_or(Modifiers::NONE);
+    let modifier = params
+        .get(1)
+        .copied()
+        .filter(|&v| v > 0)
+        .map(|v| Modifiers::from_xterm_mask((v - 1) as u8))
+        .unwrap_or(Modifiers::NONE);
 
     let code = match final_byte {
         b'A' => Some(KeyCode::Up),
@@ -305,7 +323,11 @@ fn parse_sgr_mouse(buf: &[u8], force: bool) -> Step {
         i += 1;
     }
     if i >= buf.len() {
-        return if force { Step::Skip(buf.len()) } else { Step::Incomplete };
+        return if force {
+            Step::Skip(buf.len())
+        } else {
+            Step::Incomplete
+        };
     }
     let terminator = buf[i];
     if terminator != b'M' && terminator != b'm' {
@@ -317,7 +339,12 @@ fn parse_sgr_mouse(buf: &[u8], force: bool) -> Step {
         return Step::Skip(used);
     };
     let pressed = terminator == b'M';
-    let event = decode_mouse(cb, cx.saturating_sub(1) as u16, cy.saturating_sub(1) as u16, pressed);
+    let event = decode_mouse(
+        cb,
+        cx.saturating_sub(1) as u16,
+        cy.saturating_sub(1) as u16,
+        pressed,
+    );
     match event {
         Some(ev) => Step::Event(Event::Mouse(ev), used),
         None => Step::Skip(used),
@@ -383,13 +410,22 @@ fn decode_mouse(cb: u32, column: u16, row: u16, pressed: bool) -> Option<MouseEv
         }
     };
 
-    Some(MouseEvent { kind, column, row, modifiers })
+    Some(MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers,
+    })
 }
 
 /// Parse an SS3 sequence: `ESC O <byte>`.
 fn parse_ss3(buf: &[u8], force: bool) -> Step {
     if buf.len() < 3 {
-        return if force { Step::Skip(buf.len()) } else { Step::Incomplete };
+        return if force {
+            Step::Skip(buf.len())
+        } else {
+            Step::Incomplete
+        };
     }
     let code = match buf[2] {
         b'A' => KeyCode::Up,
@@ -486,21 +522,39 @@ mod tests {
 
     #[test]
     fn ctrl_and_special() {
-        assert_eq!(events(b"\x01"), vec![Event::Key(KeyEvent::with(KeyCode::Char('a'), Modifiers::CTRL))]);
-        assert_eq!(events(b"\r"), vec![Event::Key(KeyEvent::new(KeyCode::Enter))]);
-        assert_eq!(events(b"\x7f"), vec![Event::Key(KeyEvent::new(KeyCode::Backspace))]);
+        assert_eq!(
+            events(b"\x01"),
+            vec![Event::Key(KeyEvent::with(
+                KeyCode::Char('a'),
+                Modifiers::CTRL
+            ))]
+        );
+        assert_eq!(
+            events(b"\r"),
+            vec![Event::Key(KeyEvent::new(KeyCode::Enter))]
+        );
+        assert_eq!(
+            events(b"\x7f"),
+            vec![Event::Key(KeyEvent::new(KeyCode::Backspace))]
+        );
     }
 
     #[test]
     fn arrows_and_modifiers() {
-        assert_eq!(events(b"\x1b[A"), vec![Event::Key(KeyEvent::new(KeyCode::Up))]);
+        assert_eq!(
+            events(b"\x1b[A"),
+            vec![Event::Key(KeyEvent::new(KeyCode::Up))]
+        );
         assert_eq!(
             events(b"\x1b[1;5A"),
             vec![Event::Key(KeyEvent::with(KeyCode::Up, Modifiers::CTRL))]
         );
         assert_eq!(
             events(b"\x1b[3;2~"),
-            vec![Event::Key(KeyEvent::with(KeyCode::Delete, Modifiers::SHIFT))]
+            vec![Event::Key(KeyEvent::with(
+                KeyCode::Delete,
+                Modifiers::SHIFT
+            ))]
         );
     }
 
@@ -508,7 +562,10 @@ mod tests {
     fn alt_prefixed_key() {
         assert_eq!(
             events(b"\x1bx"),
-            vec![Event::Key(KeyEvent::with(KeyCode::Char('x'), Modifiers::ALT))]
+            vec![Event::Key(KeyEvent::with(
+                KeyCode::Char('x'),
+                Modifiers::ALT
+            ))]
         );
     }
 
@@ -536,9 +593,21 @@ mod tests {
     #[test]
     fn sgr_mouse_release_and_wheel() {
         let up = events(b"\x1b[<0;1;1m");
-        assert!(matches!(up[0], Event::Mouse(MouseEvent { kind: MouseKind::Up(MouseButton::Left), .. })));
+        assert!(matches!(
+            up[0],
+            Event::Mouse(MouseEvent {
+                kind: MouseKind::Up(MouseButton::Left),
+                ..
+            })
+        ));
         let wheel = events(b"\x1b[<64;1;1M");
-        assert!(matches!(wheel[0], Event::Mouse(MouseEvent { kind: MouseKind::ScrollUp, .. })));
+        assert!(matches!(
+            wheel[0],
+            Event::Mouse(MouseEvent {
+                kind: MouseKind::ScrollUp,
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -546,12 +615,18 @@ mod tests {
         let mut p = Parser::new();
         assert!(p.feed(b"\x1b[").is_empty());
         assert!(p.feed(b"1;5").is_empty());
-        assert_eq!(p.feed(b"C"), vec![Event::Key(KeyEvent::with(KeyCode::Right, Modifiers::CTRL))]);
+        assert_eq!(
+            p.feed(b"C"),
+            vec![Event::Key(KeyEvent::with(KeyCode::Right, Modifiers::CTRL))]
+        );
     }
 
     #[test]
     fn utf8_multibyte() {
-        assert_eq!(events("é".as_bytes()), vec![Event::Key(KeyEvent::new(KeyCode::Char('é')))]);
+        assert_eq!(
+            events("é".as_bytes()),
+            vec![Event::Key(KeyEvent::new(KeyCode::Char('é')))]
+        );
     }
 
     #[test]

@@ -135,7 +135,10 @@ impl<B: Backend> Terminal<B> {
         F: FnOnce(&mut Frame<'_>),
     {
         self.start_frame()?;
-        let mut frame = Frame { buffer: &mut self.back, cursor: None };
+        let mut frame = Frame {
+            buffer: &mut self.back,
+            cursor: None,
+        };
         render(&mut frame);
         self.cursor = frame.cursor;
         self.finish_frame()

@@ -7,7 +7,7 @@
 //! cursor moves and SGR sequences.
 
 use crate::ansi;
-use crate::buffer::{char_width, Cell};
+use crate::buffer::{Cell, char_width};
 use crate::geom::{Point, Size};
 use crate::style::Style;
 use crate::sys::{self, RawModeGuard, Tty};
@@ -29,7 +29,12 @@ pub struct Features {
 
 impl Default for Features {
     fn default() -> Self {
-        Features { alternate_screen: true, mouse: true, bracketed_paste: true, focus: true }
+        Features {
+            alternate_screen: true,
+            mouse: true,
+            bracketed_paste: true,
+            focus: true,
+        }
     }
 }
 
@@ -77,8 +82,13 @@ impl UnixBackend {
             std::env::var("TERM").ok().as_deref(),
             std::env::var("COLORTERM").ok().as_deref(),
         );
-        let mut backend =
-            UnixBackend { tty, caps, features, out: Vec::with_capacity(8192), raw: Some(raw) };
+        let mut backend = UnixBackend {
+            tty,
+            caps,
+            features,
+            out: Vec::with_capacity(8192),
+            raw: Some(raw),
+        };
         backend.startup()?;
         Ok(backend)
     }
@@ -226,7 +236,12 @@ pub struct TestBackend {
 impl TestBackend {
     /// A backend reporting `size`.
     pub fn new(size: Size) -> Self {
-        TestBackend { size, cells_drawn: 0, cursor: None, cursor_visible: true }
+        TestBackend {
+            size,
+            cells_drawn: 0,
+            cursor: None,
+            cursor_visible: true,
+        }
     }
 
     /// Resize the reported terminal size (simulates a resize).

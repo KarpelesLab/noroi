@@ -15,13 +15,13 @@
 
 use noroi::event::{Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseKind};
 use noroi::geom::{Point, Rect};
-use noroi::layout::{column, row, Constraint};
+use noroi::layout::{Constraint, column, row};
 use noroi::lineedit::{LineEditor, LineOutcome};
 use noroi::style::{Attributes, Color, Style};
 use noroi::terminal::{Frame, Terminal};
 use noroi::widget::{
-    Block, BorderType, Button, Clear, Gauge, Line, List, ListItem, ListState, Padding,
-    Paragraph, Span, Wrap,
+    Block, BorderType, Button, Clear, Gauge, Line, List, ListItem, ListState, Padding, Paragraph,
+    Span, Wrap,
 };
 use std::io;
 use std::time::Duration;
@@ -36,12 +36,21 @@ enum Focus {
 }
 
 impl Focus {
-    const ORDER: [Focus; 4] = [Focus::List, Focus::Input, Focus::ButtonOk, Focus::ButtonCancel];
+    const ORDER: [Focus; 4] = [
+        Focus::List,
+        Focus::Input,
+        Focus::ButtonOk,
+        Focus::ButtonCancel,
+    ];
 
     fn cycle(self, forward: bool) -> Focus {
         let idx = Self::ORDER.iter().position(|f| *f == self).unwrap_or(0);
         let len = Self::ORDER.len();
-        let next = if forward { (idx + 1) % len } else { (idx + len - 1) % len };
+        let next = if forward {
+            (idx + 1) % len
+        } else {
+            (idx + len - 1) % len
+        };
         Self::ORDER[next]
     }
 }
@@ -59,7 +68,12 @@ struct Regions {
 }
 
 fn regions(area: Rect) -> Regions {
-    let rows = column([Constraint::Length(1), Constraint::Fill(1), Constraint::Length(1)]).split(area);
+    let rows = column([
+        Constraint::Length(1),
+        Constraint::Fill(1),
+        Constraint::Length(1),
+    ])
+    .split(area);
     let body = row([Constraint::Percentage(32), Constraint::Fill(1)])
         .spacing(1)
         .split(rows[1]);
@@ -70,7 +84,9 @@ fn regions(area: Rect) -> Regions {
         Constraint::Length(3), // buttons
     ])
     .split(body[1]);
-    let buttons = row([Constraint::Fill(1), Constraint::Fill(1)]).spacing(2).split(main[3]);
+    let buttons = row([Constraint::Fill(1), Constraint::Fill(1)])
+        .spacing(2)
+        .split(main[3]);
     Regions {
         title: rows[0],
         sidebar: body[0],
@@ -258,7 +274,10 @@ impl App {
 }
 
 fn theme_title() -> Style {
-    Style::new().fg(Color::Black).bg(Color::LightCyan).attrs(Attributes::BOLD)
+    Style::new()
+        .fg(Color::Black)
+        .bg(Color::LightCyan)
+        .attrs(Attributes::BOLD)
 }
 
 fn accent() -> Color {
@@ -273,7 +292,10 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
     // Title bar.
     let title = Paragraph::new(Line::from_spans([
         Span::styled(" noroi ", theme_title()),
-        Span::styled("  terminal UI showcase", Style::new().fg(accent()).attrs(Attributes::BOLD)),
+        Span::styled(
+            "  terminal UI showcase",
+            Style::new().fg(accent()).attrs(Attributes::BOLD),
+        ),
         Span::raw("   —   Tab: focus   d: dialog   ?: help   q: quit"),
     ]))
     .style(Style::new().bg(Color::DarkGray).fg(Color::Gray));
@@ -288,12 +310,22 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
                 .border_style(border_style(focused_list))
                 .title(Line::styled(" Sections ", title_style(focused_list))),
         )
-        .highlight_style(Style::new().fg(Color::Black).bg(accent()).attrs(Attributes::BOLD))
+        .highlight_style(
+            Style::new()
+                .fg(Color::Black)
+                .bg(accent())
+                .attrs(Attributes::BOLD),
+        )
         .highlight_symbol("▶ ");
     frame.render_stateful_widget(&list, r.sidebar, &mut app.list_state);
 
     // Main paragraph inside a block.
-    let selected = app.list_state.selected().and_then(|i| app.items.get(i)).cloned().unwrap_or_default();
+    let selected = app
+        .list_state
+        .selected()
+        .and_then(|i| app.items.get(i))
+        .cloned()
+        .unwrap_or_default();
     let body_text = format!(
         "This panel is a word-wrapped Paragraph inside a Block.\n\nThe currently selected \
          section is “{selected}”. noroi renders everything into an off-screen cell buffer and \
@@ -302,14 +334,12 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
          geometry, styling, the 16/256/true-color model, Unicode width handling, the input \
          parser, the layout engine and these widgets are all pure Rust.",
     );
-    let para = Paragraph::new(body_text)
-        .wrap(Wrap { trim: true })
-        .block(
-            Block::bordered()
-                .border_type(BorderType::Plain)
-                .title(Line::raw(" Paragraph "))
-                .padding(Padding::symmetric(1, 0)),
-        );
+    let para = Paragraph::new(body_text).wrap(Wrap { trim: true }).block(
+        Block::bordered()
+            .border_type(BorderType::Plain)
+            .title(Line::raw(" Paragraph "))
+            .padding(Padding::symmetric(1, 0)),
+    );
     frame.render_widget(&para, r.paragraph);
 
     // Gauge.
@@ -327,7 +357,11 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
         .title(Line::styled(" Text input ", title_style(input_focused)));
     let input_inner = input_block.inner(r.input);
     frame.render_widget(&input_block, r.input);
-    let cursor = app.editor.render(input_inner, frame.buffer_mut(), Style::new().fg(Color::White));
+    let cursor = app.editor.render(
+        input_inner,
+        frame.buffer_mut(),
+        Style::new().fg(Color::White),
+    );
     if input_focused {
         frame.set_cursor(cursor);
     }
@@ -336,7 +370,12 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
     let ok = Button::new("OK  (Enter)").focused(app.focus == Focus::ButtonOk);
     let cancel = Button::new("Cancel")
         .style(Style::new().fg(Color::White).bg(Color::Red))
-        .focus_style(Style::new().fg(Color::White).bg(Color::LightRed).attrs(Attributes::BOLD))
+        .focus_style(
+            Style::new()
+                .fg(Color::White)
+                .bg(Color::LightRed)
+                .attrs(Attributes::BOLD),
+        )
         .focused(app.focus == Focus::ButtonCancel);
     frame.render_widget(&ok, centered_button(r.button_ok));
     frame.render_widget(&cancel, centered_button(r.button_cancel));
@@ -370,7 +409,10 @@ fn draw_dialog(frame: &mut Frame<'_>, area: Rect) {
         .border_type(BorderType::Double)
         .border_style(Style::new().fg(Color::LightYellow))
         .style(Style::new().bg(Color::Blue))
-        .title(Line::styled(" Dialog ", Style::new().fg(Color::White).attrs(Attributes::BOLD)))
+        .title(Line::styled(
+            " Dialog ",
+            Style::new().fg(Color::White).attrs(Attributes::BOLD),
+        ))
         .padding(Padding::uniform(1));
     let inner = block.inner(dialog);
     frame.render_widget(&block, dialog);
@@ -390,17 +432,41 @@ fn draw_help(frame: &mut Frame<'_>, area: Rect) {
         .border_type(BorderType::Thick)
         .border_style(Style::new().fg(Color::LightGreen))
         .style(Style::new().bg(Color::Black))
-        .title(Line::styled(" Help ", Style::new().fg(Color::LightGreen).attrs(Attributes::BOLD)));
+        .title(Line::styled(
+            " Help ",
+            Style::new().fg(Color::LightGreen).attrs(Attributes::BOLD),
+        ));
     let inner = block.inner(popup);
     frame.render_widget(&block, popup);
     let lines = [
-        Line::from_spans([Span::styled("Tab / Shift-Tab", key_style()), Span::raw("  move focus")]),
-        Line::from_spans([Span::styled("↑ / ↓", key_style()), Span::raw("          list selection")]),
-        Line::from_spans([Span::styled("type / Enter", key_style()), Span::raw("   edit / submit text field")]),
-        Line::from_spans([Span::styled("+ / -", key_style()), Span::raw("          adjust the gauge")]),
-        Line::from_spans([Span::styled("mouse", key_style()), Span::raw("          click controls, scroll list")]),
-        Line::from_spans([Span::styled("d / ?", key_style()), Span::raw("          dialog / this help")]),
-        Line::from_spans([Span::styled("q / Ctrl-C", key_style()), Span::raw("     quit")]),
+        Line::from_spans([
+            Span::styled("Tab / Shift-Tab", key_style()),
+            Span::raw("  move focus"),
+        ]),
+        Line::from_spans([
+            Span::styled("↑ / ↓", key_style()),
+            Span::raw("          list selection"),
+        ]),
+        Line::from_spans([
+            Span::styled("type / Enter", key_style()),
+            Span::raw("   edit / submit text field"),
+        ]),
+        Line::from_spans([
+            Span::styled("+ / -", key_style()),
+            Span::raw("          adjust the gauge"),
+        ]),
+        Line::from_spans([
+            Span::styled("mouse", key_style()),
+            Span::raw("          click controls, scroll list"),
+        ]),
+        Line::from_spans([
+            Span::styled("d / ?", key_style()),
+            Span::raw("          dialog / this help"),
+        ]),
+        Line::from_spans([
+            Span::styled("q / Ctrl-C", key_style()),
+            Span::raw("     quit"),
+        ]),
         Line::raw(""),
         Line::raw("Press any key to close.").centered(),
     ];

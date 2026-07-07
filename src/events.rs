@@ -17,9 +17,9 @@ use crate::event::Event;
 use crate::input::Parser;
 use crate::sys::{self, Tty};
 use std::io::{self, Read};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -37,7 +37,11 @@ impl EventStream {
     /// Useful for tests, for headless rendering, and for embedding noroi in an
     /// application that sources events itself.
     pub fn from_receiver(rx: Receiver<Event>) -> EventStream {
-        EventStream { rx, shutdown: Arc::new(AtomicBool::new(false)), handle: None }
+        EventStream {
+            rx,
+            shutdown: Arc::new(AtomicBool::new(false)),
+            handle: None,
+        }
     }
 
     /// Spawn the reader thread on `reader` (a clone of the TTY).
@@ -49,7 +53,11 @@ impl EventStream {
             .name("noroi-input".into())
             .spawn(move || reader_loop(reader, tx, stop))
             .expect("spawn input thread");
-        EventStream { rx, shutdown, handle: Some(handle) }
+        EventStream {
+            rx,
+            shutdown,
+            handle: Some(handle),
+        }
     }
 
     /// Wait up to `timeout` for the next event.
@@ -63,9 +71,10 @@ impl EventStream {
             Some(dur) => match self.rx.recv_timeout(dur) {
                 Ok(ev) => Ok(Some(ev)),
                 Err(RecvTimeoutError::Timeout) => Ok(None),
-                Err(RecvTimeoutError::Disconnected) => {
-                    Err(io::Error::new(io::ErrorKind::BrokenPipe, "input thread stopped"))
-                }
+                Err(RecvTimeoutError::Disconnected) => Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "input thread stopped",
+                )),
             },
         }
     }

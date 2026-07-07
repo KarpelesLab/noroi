@@ -1,11 +1,11 @@
 //! [`Paragraph`]: multi-line styled text with optional word wrapping.
 
-use crate::buffer::{char_width, Buffer};
+use crate::buffer::{Buffer, char_width};
 use crate::geom::Rect;
 use crate::style::Style;
 use crate::widget::block::Block;
 use crate::widget::text::{Line, Span, Text};
-use crate::widget::{align_offset, Alignment, Widget};
+use crate::widget::{Alignment, Widget, align_offset};
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -113,7 +113,11 @@ impl Widget for Paragraph {
             }
             let alignment = self.alignment.unwrap_or(line.alignment);
             let line_width = line.width();
-            let offset = align_offset(alignment, content_area.width, line_width.saturating_sub(scroll_x));
+            let offset = align_offset(
+                alignment,
+                content_area.width,
+                line_width.saturating_sub(scroll_x),
+            );
 
             let mut x = content_area.x + offset;
             let mut col = 0u16; // display column within the unscrolled line
@@ -153,7 +157,10 @@ struct Token {
 fn wrap_line(line: &Line, width: u16, trim: bool) -> Vec<Line> {
     let tokens = tokenize(line);
     if tokens.is_empty() {
-        return alloc::vec![Line { spans: Vec::new(), alignment: line.alignment }];
+        return alloc::vec![Line {
+            spans: Vec::new(),
+            alignment: line.alignment
+        }];
     }
 
     let mut rows: Vec<Vec<(char, Style)>> = Vec::new();
@@ -200,7 +207,10 @@ fn wrap_line(line: &Line, width: u16, trim: bool) -> Vec<Line> {
     }
 
     rows.into_iter()
-        .map(|row| Line { spans: coalesce(row), alignment: line.alignment })
+        .map(|row| Line {
+            spans: coalesce(row),
+            alignment: line.alignment,
+        })
         .collect()
 }
 
@@ -216,7 +226,11 @@ fn tokenize(line: &Line) -> Vec<Token> {
                     t.chars.push((c, span.style));
                     t.width += cw;
                 }
-                _ => tokens.push(Token { chars: alloc::vec![(c, span.style)], is_space, width: cw }),
+                _ => tokens.push(Token {
+                    chars: alloc::vec![(c, span.style)],
+                    is_space,
+                    width: cw,
+                }),
             }
         }
     }
@@ -236,7 +250,10 @@ fn coalesce(row: Vec<(char, Style)>) -> Vec<Span> {
     for (c, style) in row {
         match spans.last_mut() {
             Some(last) if last.style == style => last.content.push(c),
-            _ => spans.push(Span { content: String::from(c), style }),
+            _ => spans.push(Span {
+                content: String::from(c),
+                style,
+            }),
         }
     }
     spans
@@ -252,7 +269,10 @@ mod tests {
         let line = Line::raw("the quick brown fox");
         let rows = wrap_line(&line, 9, false);
         let plain: Vec<String> = rows.iter().map(|l| l.to_plain()).collect();
-        assert_eq!(plain, alloc::vec![String::from("the quick"), String::from("brown fox")]);
+        assert_eq!(
+            plain,
+            alloc::vec![String::from("the quick"), String::from("brown fox")]
+        );
     }
 
     #[test]

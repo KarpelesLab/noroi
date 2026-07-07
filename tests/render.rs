@@ -10,7 +10,7 @@ use noroi::backend::TestBackend;
 use noroi::event::{Event, KeyCode, KeyEvent};
 use noroi::events::EventStream;
 use noroi::geom::{Point, Rect, Size};
-use noroi::layout::{column, Constraint};
+use noroi::layout::{Constraint, column};
 use noroi::style::{Color, Style};
 use noroi::terminal::Terminal;
 use noroi::widget::{Block, Borders, Gauge, Paragraph, Widget};
@@ -31,7 +31,10 @@ fn draws_paragraph_into_screen_buffer() {
     .unwrap();
 
     let buf = term.current_buffer();
-    let word: String = "hello".char_indices().map(|(i, _)| buf.get(i as u16, 0).unwrap().symbol_char()).collect();
+    let word: String = "hello"
+        .char_indices()
+        .map(|(i, _)| buf.get(i as u16, 0).unwrap().symbol_char())
+        .collect();
     assert_eq!(word, "hello");
     // First frame paints every non-blank cell we touched.
     assert!(term.backend().cells_drawn >= 5);
@@ -96,7 +99,8 @@ fn gauge_fills_proportionally() {
 #[test]
 fn cursor_is_positioned_and_toggled() {
     let (mut term, _tx) = harness(Size::new(10, 2));
-    term.draw(|frame| frame.set_cursor(Point::new(3, 1))).unwrap();
+    term.draw(|frame| frame.set_cursor(Point::new(3, 1)))
+        .unwrap();
     assert_eq!(term.backend().cursor, Some((3, 1)));
     assert!(term.backend().cursor_visible);
 
@@ -125,11 +129,18 @@ fn resize_triggers_full_repaint() {
 #[test]
 fn events_flow_through_the_stream() {
     let (term, tx) = harness(Size::new(4, 1));
-    tx.send(Event::Key(KeyEvent::new(KeyCode::Char('z')))).unwrap();
-    let got = term.events().poll(Some(Duration::from_millis(200))).unwrap();
+    tx.send(Event::Key(KeyEvent::new(KeyCode::Char('z'))))
+        .unwrap();
+    let got = term
+        .events()
+        .poll(Some(Duration::from_millis(200)))
+        .unwrap();
     assert_eq!(got, Some(Event::Key(KeyEvent::new(KeyCode::Char('z')))));
     // Nothing more queued: a short poll times out.
-    assert_eq!(term.events().poll(Some(Duration::from_millis(20))).unwrap(), None);
+    assert_eq!(
+        term.events().poll(Some(Duration::from_millis(20))).unwrap(),
+        None
+    );
 }
 
 #[test]

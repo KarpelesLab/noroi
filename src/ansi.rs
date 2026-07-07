@@ -56,14 +56,20 @@ impl Caps {
     /// `truecolor`/`24bit` implies true color; a `TERM` containing `256color`
     /// implies the 256-color palette; `dumb` or absent implies no color.
     pub fn detect(term: Option<&str>, colorterm: Option<&str>) -> Caps {
-        let colors = if matches!(colorterm, Some(c) if c.contains("truecolor") || c.contains("24bit")) {
+        let colors = if matches!(colorterm, Some(c) if c.contains("truecolor") || c.contains("24bit"))
+        {
             ColorDepth::TrueColor
         } else {
             match term {
                 None => ColorDepth::None,
                 Some(t) if t == "dumb" || t.is_empty() => ColorDepth::None,
                 Some(t) if t.contains("256color") || t.contains("256") => ColorDepth::Indexed256,
-                Some(t) if t.contains("color") || t.contains("xterm") || t.contains("screen") || t.contains("tmux") => {
+                Some(t)
+                    if t.contains("color")
+                        || t.contains("xterm")
+                        || t.contains("screen")
+                        || t.contains("tmux") =>
+                {
                     ColorDepth::Ansi16
                 }
                 Some(_) => ColorDepth::Ansi16,
@@ -313,8 +319,14 @@ mod tests {
 
     #[test]
     fn detect_depths() {
-        assert_eq!(Caps::detect(Some("xterm-256color"), None).colors, ColorDepth::Indexed256);
-        assert_eq!(Caps::detect(Some("xterm"), Some("truecolor")).colors, ColorDepth::TrueColor);
+        assert_eq!(
+            Caps::detect(Some("xterm-256color"), None).colors,
+            ColorDepth::Indexed256
+        );
+        assert_eq!(
+            Caps::detect(Some("xterm"), Some("truecolor")).colors,
+            ColorDepth::TrueColor
+        );
         assert_eq!(Caps::detect(Some("dumb"), None).colors, ColorDepth::None);
         assert_eq!(Caps::detect(None, None).colors, ColorDepth::None);
     }

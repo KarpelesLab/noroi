@@ -1,9 +1,9 @@
 //! [`Button`]: a focusable, clickable labelled control.
 
-use crate::buffer::{char_width, Buffer};
+use crate::buffer::{Buffer, char_width};
 use crate::geom::Rect;
 use crate::style::{Attributes, Color, Style};
-use crate::widget::{align_offset, Alignment, Widget};
+use crate::widget::{Alignment, Widget, align_offset};
 use alloc::string::String;
 
 /// A labelled button.
@@ -27,7 +27,10 @@ impl Button {
         Button {
             label: label.into(),
             style: Style::new().fg(Color::Black).bg(Color::Gray),
-            focus_style: Style::new().fg(Color::Black).bg(Color::LightBlue).attrs(Attributes::BOLD),
+            focus_style: Style::new()
+                .fg(Color::Black)
+                .bg(Color::LightBlue)
+                .attrs(Attributes::BOLD),
             focused: false,
             alignment: Alignment::Center,
         }
@@ -63,7 +66,11 @@ impl Widget for Button {
         if area.is_empty() {
             return;
         }
-        let style = if self.focused { self.focus_style } else { self.style };
+        let style = if self.focused {
+            self.focus_style
+        } else {
+            self.style
+        };
         // Fill the whole button.
         for y in area.y..area.bottom() {
             for x in area.x..area.right() {
