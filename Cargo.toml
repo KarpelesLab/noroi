@@ -1,0 +1,27 @@
+[package]
+name = "noroi"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+authors = ["Karpelès Lab Inc."]
+repository = "https://github.com/KarpelesLab/noroi"
+description = "Rich terminal UI for Rust, in the spirit of curses — zero external crate dependencies."
+keywords = ["tui", "terminal", "curses", "ncurses", "cli"]
+categories = ["command-line-interface", "gui"]
+
+[features]
+default = ["std"]
+# The `std` feature enables the OS-facing layer: the unix TTY backend (raw mode
+# via libc symbols that std already links, so still zero external crates), the
+# terminal driver, and the threaded event reader. Disable it (`--no-default-features`)
+# to build only the `#![no_std]` + `alloc` core: buffers, styling, input parsing,
+# layout and widgets.
+std = []
+
+[lints.rust]
+missing_docs = "warn"
+
+[profile.release]
+lto = true
+codegen-units = 1
