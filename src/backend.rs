@@ -206,3 +206,59 @@ impl Drop for UnixBackend {
         self.raw.take();
     }
 }
+
+/// A headless [`Backend`] that writes nowhere and reports a fixed size.
+///
+/// It records the total number of cells drawn and the requested cursor
+/// position, which — together with [`Terminal::current_buffer`](crate::terminal::Terminal::current_buffer)
+/// — makes the whole render pipeline testable without a real terminal.
+#[derive(Debug, Clone)]
+pub struct TestBackend {
+    size: Size,
+    /// Count of cells emitted by the most recent [`draw`](Backend::draw).
+    pub cells_drawn: usize,
+    /// The cursor position requested by [`set_cursor`](Backend::set_cursor).
+    pub cursor: Option<(u16, u16)>,
+    /// Whether the cursor is currently shown.
+    pub cursor_visible: bool,
+}
+
+impl TestBackend {
+    /// A backend reporting `size`.
+    pub fn new(size: Size) -> Self {
+        TestBackend { size, cells_drawn: 0, cursor: None, cursor_visible: true }
+    }
+
+    /// Resize the reported terminal size (simulates a resize).
+    pub fn set_size(&mut self, size: Size) {
+        self.size = size;
+    }
+}
+
+impl Backend for TestBackend {
+    fn size(&self) -> io::Result<Size> {
+        Ok(self.size)
+    }
+    fn clear(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+    fn hide_cursor(&mut self) -> io::Result<()> {
+        self.cursor_visible = false;
+        Ok(())
+    }
+    fn show_cursor(&mut self) -> io::Result<()> {
+        self.cursor_visible = true;
+        Ok(())
+    }
+    fn set_cursor(&mut self, x: u16, y: u16) -> io::Result<()> {
+        self.cursor = Some((x, y));
+        Ok(())
+    }
+    fn draw(&mut self, diff: &[(Point, &Cell)]) -> io::Result<()> {
+        self.cells_drawn = diff.len();
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}

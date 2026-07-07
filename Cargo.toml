@@ -19,6 +19,11 @@ default = ["std"]
 # layout and widgets.
 std = []
 
+[[bin]]
+name = "noroidemo"
+path = "src/bin/noroidemo.rs"
+required-features = ["std"]
+
 [lints.rust]
 missing_docs = "warn"
 

@@ -85,6 +85,18 @@ impl<B: Backend> Terminal<B> {
         &self.backend
     }
 
+    /// Mutable access to the backend (e.g. to simulate a resize in tests).
+    pub fn backend_mut(&mut self) -> &mut B {
+        &mut self.backend
+    }
+
+    /// The buffer currently on screen (the last fully drawn frame).
+    ///
+    /// Handy for snapshot tests and for inspecting what was rendered.
+    pub fn current_buffer(&self) -> &Buffer {
+        &self.front
+    }
+
     /// Re-query the terminal size and, if it changed, resize the buffers and
     /// request a full repaint on the next frame.
     ///

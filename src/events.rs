@@ -32,6 +32,14 @@ pub struct EventStream {
 }
 
 impl EventStream {
+    /// Build a stream fed by an existing channel, with no reader thread.
+    ///
+    /// Useful for tests, for headless rendering, and for embedding noroi in an
+    /// application that sources events itself.
+    pub fn from_receiver(rx: Receiver<Event>) -> EventStream {
+        EventStream { rx, shutdown: Arc::new(AtomicBool::new(false)), handle: None }
+    }
+
     /// Spawn the reader thread on `reader` (a clone of the TTY).
     pub fn spawn(reader: Tty) -> EventStream {
         let (tx, rx) = mpsc::channel();

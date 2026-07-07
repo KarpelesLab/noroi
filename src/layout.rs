@@ -239,6 +239,155 @@ fn solve(total: u16, constraints: &[Constraint]) -> Vec<u16> {
     sizes.into_iter().map(|v| v.min(u16::MAX as u32) as u16).collect()
 }
 
+// ============================================================================
+// Higher-level ergonomic layout: rows, columns, spacers and grids.
+// ============================================================================
+
+/// A horizontal (column) layout: children laid left to right.
+///
+/// Sugar for `Layout::horizontal().constraints(..)`.
+pub fn row<I: IntoIterator<Item = Constraint>>(constraints: I) -> Layout {
+    Layout::horizontal().constraints(constraints)
+}
+
+/// A vertical (row) layout: children laid top to bottom.
+///
+/// Sugar for `Layout::vertical().constraints(..)`.
+pub fn column<I: IntoIterator<Item = Constraint>>(constraints: I) -> Layout {
+    Layout::vertical().constraints(constraints)
+}
+
+/// A flexible gap that soaks up leftover space — a [`Constraint::Fill`] of
+/// weight 1. Use it to push siblings apart or to center a fixed-size child.
+///
+/// ```
+/// use noroi::geom::Rect;
+/// use noroi::layout::{column, spacer, Constraint};
+///
+/// // Vertically center a 3-row panel.
+/// let rows = column([spacer(), Constraint::Length(3), spacer()]).split(Rect::new(0, 0, 10, 9));
+/// assert_eq!(rows[1], Rect::new(0, 3, 10, 3));
+/// ```
+pub const fn spacer() -> Constraint {
+    Constraint::Fill(1)
+}
+
+/// A fixed-size gap of `n` cells — a [`Constraint::Length`].
+pub const fn gap(n: u16) -> Constraint {
+    Constraint::Length(n)
+}
+
+/// A two-dimensional layout: split an area into a grid of rows and columns.
+///
+/// The grid resolves its row heights and column widths independently using the
+/// same [`Constraint`] solver, then produces one [`Rect`] per cell.
+///
+/// ```
+/// use noroi::geom::Rect;
+/// use noroi::layout::{Constraint, Grid};
+///
+/// let cells = Grid::new()
+///     .rows([Constraint::Fill(1), Constraint::Fill(1)])
+///     .columns([Constraint::Length(4), Constraint::Fill(1)])
+///     .split(Rect::new(0, 0, 10, 4));
+/// assert_eq!(cells.get(0, 0), Some(Rect::new(0, 0, 4, 2)));
+/// assert_eq!(cells.get(1, 1), Some(Rect::new(4, 2, 6, 2)));
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct Grid {
+    rows: Vec<Constraint>,
+    columns: Vec<Constraint>,
+    margin: u16,
+    col_spacing: u16,
+    row_spacing: u16,
+}
+
+impl Grid {
+    /// An empty grid.
+    pub fn new() -> Self {
+        Grid::default()
+    }
+
+    /// Set the row constraints (vertical division).
+    pub fn rows<I: IntoIterator<Item = Constraint>>(mut self, rows: I) -> Self {
+        self.rows = rows.into_iter().collect();
+        self
+    }
+
+    /// Set the column constraints (horizontal division).
+    pub fn columns<I: IntoIterator<Item = Constraint>>(mut self, columns: I) -> Self {
+        self.columns = columns.into_iter().collect();
+        self
+    }
+
+    /// Inset the whole grid before splitting.
+    pub fn margin(mut self, margin: u16) -> Self {
+        self.margin = margin;
+        self
+    }
+
+    /// Blank cells between columns and between rows.
+    pub fn spacing(mut self, column_spacing: u16, row_spacing: u16) -> Self {
+        self.col_spacing = column_spacing;
+        self.row_spacing = row_spacing;
+        self
+    }
+
+    /// Resolve the grid over `area`, returning all cell rectangles.
+    pub fn split(&self, area: Rect) -> GridCells {
+        let row_rects = Layout::vertical()
+            .constraints(self.rows.iter().copied())
+            .margin(self.margin)
+            .spacing(self.row_spacing)
+            .split(area);
+        let ncols = self.columns.len();
+        let nrows = row_rects.len();
+        let mut cells = Vec::with_capacity(nrows * ncols);
+        for row_rect in row_rects {
+            let col_rects = Layout::horizontal()
+                .constraints(self.columns.iter().copied())
+                .spacing(self.col_spacing)
+                .split(row_rect);
+            cells.extend(col_rects);
+        }
+        GridCells { cells, nrows, ncols }
+    }
+}
+
+/// The resolved rectangles of a [`Grid`], addressable by `(row, column)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GridCells {
+    cells: Vec<Rect>,
+    nrows: usize,
+    ncols: usize,
+}
+
+impl GridCells {
+    /// Number of rows.
+    pub fn rows(&self) -> usize {
+        self.nrows
+    }
+
+    /// Number of columns.
+    pub fn columns(&self) -> usize {
+        self.ncols
+    }
+
+    /// The rectangle at `(row, column)`, or `None` if out of range.
+    pub fn get(&self, row: usize, column: usize) -> Option<Rect> {
+        if row < self.nrows && column < self.ncols {
+            self.cells.get(row * self.ncols + column).copied()
+        } else {
+            None
+        }
+    }
+
+    /// All cell rectangles in row-major order.
+    pub fn all(&self) -> &[Rect] {
+        &self.cells
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +434,25 @@ mod tests {
             .split(Rect::new(0, 0, 12, 3));
         assert_eq!(cols[0], Rect::new(0, 0, 5, 3));
         assert_eq!(cols[1], Rect::new(7, 0, 5, 3));
+    }
+
+    #[test]
+    fn spacer_centers() {
+        let rows = column([spacer(), Constraint::Length(3), spacer()]).split(Rect::new(0, 0, 10, 9));
+        assert_eq!(rows[1], Rect::new(0, 3, 10, 3));
+    }
+
+    #[test]
+    fn grid_cells() {
+        let cells = Grid::new()
+            .rows([Constraint::Fill(1), Constraint::Fill(1)])
+            .columns([Constraint::Length(4), Constraint::Fill(1)])
+            .split(Rect::new(0, 0, 10, 4));
+        assert_eq!(cells.rows(), 2);
+        assert_eq!(cells.columns(), 2);
+        assert_eq!(cells.get(0, 0), Some(Rect::new(0, 0, 4, 2)));
+        assert_eq!(cells.get(0, 1), Some(Rect::new(4, 0, 6, 2)));
+        assert_eq!(cells.get(1, 1), Some(Rect::new(4, 2, 6, 2)));
+        assert_eq!(cells.get(2, 0), None);
     }
 }
