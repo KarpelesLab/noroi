@@ -62,6 +62,7 @@ pub mod input;
 pub mod layout;
 pub mod lineedit;
 pub mod style;
+pub mod theme;
 pub mod widget;
 
 #[cfg(feature = "std")]
@@ -79,6 +80,7 @@ pub use buffer::{Buffer, Cell};
 pub use event::{Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseKind};
 pub use geom::{Point, Rect, Size};
 pub use style::{Attributes, Color, Style};
+pub use theme::Theme;
 pub use widget::Widget;
 
 #[cfg(feature = "std")]

@@ -2,26 +2,30 @@
 //!
 //! Run it with `cargo run --bin noroidemo`. It draws a dashboard exercising the
 //! layout engine, [`Block`], [`Paragraph`], [`List`], [`Gauge`], [`Button`], the
-//! [`LineEditor`], and a floating dialog (built from [`Clear`] + a [`Block`]).
+//! [`LineEditor`], a floating dialog, and the [`Theme`] system.
+//!
+//! The look is "ofuda" — sumi ink, washi paper and a vermilion seal, after
+//! noroi's namesake 呪い ("curse"). Press `m` to reskin it as the monochrome
+//! theme; focus a panel and its border thickens and turns vermilion.
 //!
 //! Controls:
-//! * `Tab` / `Shift-Tab` — move focus between the list, the text field and the buttons.
+//! * `Tab` / `Shift-Tab` — move focus between the list, the prompt and the buttons.
 //! * `↑`/`↓` — move the list selection (when the list is focused).
-//! * type — edit the text field (when it is focused); `Enter` submits it.
-//! * `+` / `-` — nudge the progress gauge; it also animates on its own.
+//! * type — edit the prompt (when it is focused); `Enter` submits it.
+//! * `+` / `-` — nudge the gauge; it also animates on its own.
 //! * `Enter` / click — activate the focused button, or click any control.
-//! * `d` — toggle a modal dialog; `?` — toggle the help overlay.
+//! * `m` — switch theme · `d` — dialog · `?` — help.
 //! * `q` / `Ctrl-C` / `Esc` (twice) — quit.
 
 use noroi::event::{Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseKind};
-use noroi::geom::{Point, Rect};
+use noroi::geom::{Point, Rect, Size};
 use noroi::layout::{Constraint, column, row};
 use noroi::lineedit::{LineEditor, LineOutcome};
-use noroi::style::{Attributes, Color, Style};
 use noroi::terminal::{Frame, Terminal};
+use noroi::theme::Theme;
 use noroi::widget::{
-    Block, BorderType, Button, Clear, Gauge, Line, List, ListItem, ListState, Padding, Paragraph,
-    Span, Wrap,
+    Alignment, Button, Clear, Gauge, Line, List, ListItem, ListState, Padding, Paragraph, Span,
+    Text, Wrap,
 };
 use std::io;
 use std::time::Duration;
@@ -30,7 +34,7 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
     List,
-    Input,
+    Prompt,
     ButtonOk,
     ButtonCancel,
 }
@@ -38,7 +42,7 @@ enum Focus {
 impl Focus {
     const ORDER: [Focus; 4] = [
         Focus::List,
-        Focus::Input,
+        Focus::Prompt,
         Focus::ButtonOk,
         Focus::ButtonCancel,
     ];
@@ -55,13 +59,70 @@ impl Focus {
     }
 }
 
+/// The sections shown in the sidebar, each with a one-line description that the
+/// main panel shows when it is selected. Order is not meaningful, so the list is
+/// not numbered.
+const SECTIONS: &[(&str, &str)] = &[
+    (
+        "Overview",
+        "noroi draws whole interfaces into an off-screen cell grid and writes only \
+         the cells that change each frame — flicker-free, the way curses does it.",
+    ),
+    (
+        "Widgets",
+        "Blocks, paragraphs, lists, gauges, buttons and prompts. Each one paints \
+         into a buffer and clips itself; none of them touch the terminal directly.",
+    ),
+    (
+        "Layout engine",
+        "Split any region with sizing constraints, or reach for the row, column, \
+         grid and spacer helpers to place widgets without doing arithmetic.",
+    ),
+    (
+        "Input & mouse",
+        "One parser decodes keys and modifiers, SGR mouse (click, drag, wheel), \
+         bracketed paste and focus — coping with sequences split across reads.",
+    ),
+    (
+        "Line editor",
+        "A reusable single-line editor with history and emacs-style keys. The \
+         prompt below is one — focus it with Tab and type.",
+    ),
+    (
+        "Colors & styles",
+        "16, 256 and 24-bit color, downgraded to fit the terminal. Press m to \
+         reskin this demo between the ofuda and mono themes.",
+    ),
+    (
+        "Full-screen mode",
+        "Opening a terminal enters raw mode and the alternate screen, then restores \
+         everything when it closes — even on a panic.",
+    ),
+    (
+        "Dialogs & popups",
+        "Clear a region, then draw over it. Press d for a modal dialog, or ? for \
+         the help overlay — both are built this way.",
+    ),
+    (
+        "Threaded events",
+        "Input is read on a background thread and delivered over a channel; a \
+         resize is noticed without any signal handler.",
+    ),
+    (
+        "C bindings",
+        "A C ABI ships alongside: open a terminal, draw boxes and text, and poll \
+         events from C. The header is include/noroi.h.",
+    ),
+];
+
 /// Precomputed rectangles for one frame, reused for hit-testing.
 struct Regions {
     title: Rect,
     sidebar: Rect,
+    palette: Rect,
     paragraph: Rect,
     gauge: Rect,
-    input: Rect,
+    prompt: Rect,
     button_ok: Rect,
     button_cancel: Rect,
     status: Rect,
@@ -74,13 +135,17 @@ fn regions(area: Rect) -> Regions {
         Constraint::Length(1),
     ])
     .split(area);
-    let body = row([Constraint::Percentage(32), Constraint::Fill(1)])
+    // Inset the body by a column on each side for breathing room.
+    let body_area = rows[1].shrink(1, 0);
+    let body = row([Constraint::Length(24), Constraint::Fill(1)])
         .spacing(1)
-        .split(rows[1]);
+        .split(body_area);
+    // The sidebar stacks the section list above a small palette panel.
+    let side = column([Constraint::Fill(1), Constraint::Length(6)]).split(body[0]);
     let main = column([
         Constraint::Fill(1),   // paragraph
         Constraint::Length(3), // gauge
-        Constraint::Length(3), // input
+        Constraint::Length(3), // prompt
         Constraint::Length(3), // buttons
     ])
     .split(body[1]);
@@ -89,10 +154,11 @@ fn regions(area: Rect) -> Regions {
         .split(main[3]);
     Regions {
         title: rows[0],
-        sidebar: body[0],
+        sidebar: side[0],
+        palette: side[1],
         paragraph: main[0],
         gauge: main[1],
-        input: main[2],
+        prompt: main[2],
         button_ok: buttons[0],
         button_cancel: buttons[1],
         status: rows[2],
@@ -100,9 +166,10 @@ fn regions(area: Rect) -> Regions {
 }
 
 struct App {
+    theme: Theme,
+    mono: bool,
     focus: Focus,
     list_state: ListState,
-    items: Vec<String>,
     editor: LineEditor,
     gauge: f32,
     gauge_dir: f32,
@@ -119,27 +186,14 @@ impl App {
         let mut list_state = ListState::new();
         list_state.select(Some(0));
         App {
+            theme: Theme::ofuda(),
+            mono: false,
             focus: Focus::List,
             list_state,
-            items: [
-                "Overview",
-                "Widgets",
-                "Layout engine",
-                "Input & mouse",
-                "Line editor",
-                "Colors & styles",
-                "Full-screen mode",
-                "Dialogs & popups",
-                "Threaded events",
-                "C bindings",
-            ]
-            .iter()
-            .map(|s| s.to_string())
-            .collect(),
             editor: LineEditor::new(),
             gauge: 0.42,
             gauge_dir: 0.01,
-            status: "Welcome to noroi — press Tab to move focus, q to quit.".to_string(),
+            status: "Select a section, or press ? for help.".to_string(),
             show_dialog: false,
             show_help: false,
             last_mouse: None,
@@ -149,7 +203,7 @@ impl App {
     }
 
     fn tick(&mut self) {
-        // Ping-pong the gauge to demonstrate smooth sub-cell animation.
+        // Ping-pong the gauge to show smooth sub-cell animation.
         self.gauge += self.gauge_dir;
         if self.gauge >= 1.0 {
             self.gauge = 1.0;
@@ -160,13 +214,21 @@ impl App {
         }
     }
 
+    fn toggle_theme(&mut self) {
+        self.mono = !self.mono;
+        self.theme = if self.mono {
+            Theme::mono()
+        } else {
+            Theme::ofuda()
+        };
+        self.status = format!("Theme: {}", if self.mono { "mono" } else { "ofuda" });
+    }
+
     fn on_key(&mut self, key: KeyEvent) {
-        // Global shortcuts first.
         if key.code == KeyCode::Char('c') && key.modifiers.contains(Modifiers::CTRL) {
             self.should_quit = true;
             return;
         }
-        // Escape: close overlays, else require a double-press to quit.
         if key.code == KeyCode::Esc {
             if self.show_dialog || self.show_help {
                 self.show_dialog = false;
@@ -178,24 +240,23 @@ impl App {
                 self.should_quit = true;
             } else {
                 self.pending_esc = true;
-                self.status = "Press Esc again to quit.".to_string();
+                self.status = "Press Esc again to leave.".to_string();
             }
             return;
         }
         self.pending_esc = false;
 
         if self.show_dialog || self.show_help {
-            // Any key dismisses the overlay.
             self.show_dialog = false;
             self.show_help = false;
             return;
         }
 
-        // When the text field is focused, route printable keys to the editor.
-        if self.focus == Focus::Input {
+        // When the prompt is focused, printable keys edit it.
+        if self.focus == Focus::Prompt {
             match self.editor.handle_key(key) {
                 LineOutcome::Submitted => {
-                    self.status = format!("Submitted: {:?}", self.editor.text());
+                    self.status = format!("Prompt: {:?}", self.editor.text());
                     self.editor.clear();
                     return;
                 }
@@ -209,19 +270,16 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Char('q') if self.focus != Focus::Input => self.should_quit = true,
-            KeyCode::Char('d') if self.focus != Focus::Input => self.show_dialog = true,
-            KeyCode::Char('?') if self.focus != Focus::Input => self.show_help = true,
+            KeyCode::Char('q') if self.focus != Focus::Prompt => self.should_quit = true,
+            KeyCode::Char('d') if self.focus != Focus::Prompt => self.show_dialog = true,
+            KeyCode::Char('?') if self.focus != Focus::Prompt => self.show_help = true,
+            KeyCode::Char('m') if self.focus != Focus::Prompt => self.toggle_theme(),
             KeyCode::Tab => self.focus = self.focus.cycle(true),
             KeyCode::BackTab => self.focus = self.focus.cycle(false),
-            KeyCode::Char('+') | KeyCode::Char('=') => {
-                self.gauge = (self.gauge + 0.05).min(1.0);
-            }
-            KeyCode::Char('-') => {
-                self.gauge = (self.gauge - 0.05).max(0.0);
-            }
-            KeyCode::Up if self.focus == Focus::List => self.list_state.previous(self.items.len()),
-            KeyCode::Down if self.focus == Focus::List => self.list_state.next(self.items.len()),
+            KeyCode::Char('+') | KeyCode::Char('=') => self.gauge = (self.gauge + 0.05).min(1.0),
+            KeyCode::Char('-') => self.gauge = (self.gauge - 0.05).max(0.0),
+            KeyCode::Up if self.focus == Focus::List => self.list_state.previous(SECTIONS.len()),
+            KeyCode::Down if self.focus == Focus::List => self.list_state.next(SECTIONS.len()),
             KeyCode::Enter => self.activate_focus(),
             _ => {}
         }
@@ -229,14 +287,14 @@ impl App {
 
     fn activate_focus(&mut self) {
         match self.focus {
-            Focus::ButtonOk => self.status = "OK pressed ✓".to_string(),
-            Focus::ButtonCancel => self.status = "Cancel pressed ✗".to_string(),
+            Focus::ButtonOk => self.status = "Applied.".to_string(),
+            Focus::ButtonCancel => self.status = "Dismissed.".to_string(),
             Focus::List => {
                 if let Some(i) = self.list_state.selected() {
-                    self.status = format!("Selected: {}", self.items[i]);
+                    self.status = format!("▸ {}", SECTIONS[i].0);
                 }
             }
-            Focus::Input => {}
+            Focus::Prompt => {}
         }
     }
 
@@ -251,248 +309,240 @@ impl App {
                 } else if r.button_cancel.contains(at) {
                     self.focus = Focus::ButtonCancel;
                     self.activate_focus();
-                } else if r.input.contains(at) {
-                    self.focus = Focus::Input;
+                } else if r.prompt.contains(at) {
+                    self.focus = Focus::Prompt;
                 } else if r.sidebar.contains(at) {
                     self.focus = Focus::List;
-                    // Map the click row to a list item.
-                    let inner_top = r.sidebar.y + 1; // account for the block border
+                    let inner_top = r.sidebar.y + 1; // past the block's top border
                     if at.y >= inner_top {
                         let idx = (at.y - inner_top) as usize + self.list_state.offset();
-                        if idx < self.items.len() {
+                        if idx < SECTIONS.len() {
                             self.list_state.select(Some(idx));
                             self.activate_focus();
                         }
                     }
                 }
             }
-            MouseKind::ScrollDown => self.list_state.next(self.items.len()),
-            MouseKind::ScrollUp => self.list_state.previous(self.items.len()),
+            MouseKind::ScrollDown => self.list_state.next(SECTIONS.len()),
+            MouseKind::ScrollUp => self.list_state.previous(SECTIONS.len()),
             _ => {}
         }
     }
 }
 
-fn theme_title() -> Style {
-    Style::new()
-        .fg(Color::Black)
-        .bg(Color::LightCyan)
-        .attrs(Attributes::BOLD)
-}
-
-fn accent() -> Color {
-    Color::LightCyan
-}
-
 fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
+    let t = app.theme;
     let area = frame.area();
-    // Paint an overall background.
-    frame.render_widget(&Clear::new().style(Style::new().bg(Color::Reset)), area);
+    frame.render_widget(&Clear::new().style(t.background), area);
 
-    // Title bar.
-    let title = Paragraph::new(Line::from_spans([
-        Span::styled(" noroi ", theme_title()),
-        Span::styled(
-            "  terminal UI showcase",
-            Style::new().fg(accent()).attrs(Attributes::BOLD),
-        ),
-        Span::raw("   —   Tab: focus   d: dialog   ?: help   q: quit"),
-    ]))
-    .style(Style::new().bg(Color::DarkGray).fg(Color::Gray));
-    frame.render_widget(&title, r.title);
+    draw_title(frame, t, r.title);
+    draw_sidebar(frame, app, r);
+    draw_palette(frame, t, r.palette);
+    draw_paragraph(frame, app, r);
+    draw_gauge(frame, app, r);
+    draw_prompt(frame, app, r);
+    draw_buttons(frame, app, r);
+    draw_status(frame, app, r);
 
-    // Sidebar list.
-    let focused_list = app.focus == Focus::List;
-    let list = List::new(app.items.iter().map(|s| ListItem::new(s.as_str())))
-        .block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .border_style(border_style(focused_list))
-                .title(Line::styled(" Sections ", title_style(focused_list))),
-        )
-        .highlight_style(
-            Style::new()
-                .fg(Color::Black)
-                .bg(accent())
-                .attrs(Attributes::BOLD),
-        )
-        .highlight_symbol("▶ ");
+    if app.show_help {
+        draw_help(frame, t, area);
+    } else if app.show_dialog {
+        draw_dialog(frame, t, area);
+    }
+}
+
+/// The signature: a stamped hanko seal, then a gold tagline.
+fn draw_title(frame: &mut Frame<'_>, t: Theme, area: Rect) {
+    let title = Line::from_spans([
+        Span::styled(" 呪 noroi ", t.selection),
+        Span::raw("  "),
+        Span::styled("the terminal, cursed", t.accent_alt),
+    ]);
+    frame.render_widget(&Paragraph::new(title).style(t.background), area);
+}
+
+fn draw_sidebar(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
+    let t = app.theme;
+    let focused = app.focus == Focus::List;
+    let block = app
+        .theme
+        .panel(focused)
+        .title(Line::styled(" Sections ", t.title));
+    let items = SECTIONS.iter().map(|(name, _)| ListItem::new(*name));
+    let list = List::new(items)
+        .block(block)
+        .style(t.text)
+        .highlight_style(t.selection)
+        .highlight_symbol("  ");
     frame.render_stateful_widget(&list, r.sidebar, &mut app.list_state);
+}
 
-    // Main paragraph inside a block.
-    let selected = app
+/// A small panel of color swatches — fills the sidebar and shows the palette
+/// the whole UI is derived from.
+fn draw_palette(frame: &mut Frame<'_>, t: Theme, area: Rect) {
+    let block = t.panel(false).title(Line::styled(" Palette ", t.title));
+    let inner = block.inner(area);
+    frame.render_widget(&block, area);
+    let swatches = [
+        ("朱 vermilion", t.accent),
+        ("金 gold", t.accent_alt),
+        ("紙 paper", t.text),
+        ("墨 ink", t.border),
+    ];
+    for (i, (label, style)) in swatches.iter().enumerate() {
+        let y = inner.y + i as u16;
+        if y >= inner.bottom() {
+            break;
+        }
+        let line = Line::from_spans([
+            Span::styled("██", *style),
+            Span::styled(format!(" {label}"), t.dim),
+        ]);
+        frame.render_widget(&Paragraph::new(line), Rect::new(inner.x, y, inner.width, 1));
+    }
+}
+
+fn draw_paragraph(frame: &mut Frame<'_>, app: &App, r: &Regions) {
+    let t = app.theme;
+    let (name, blurb) = app
         .list_state
         .selected()
-        .and_then(|i| app.items.get(i))
-        .cloned()
-        .unwrap_or_default();
-    let body_text = format!(
-        "This panel is a word-wrapped Paragraph inside a Block.\n\nThe currently selected \
-         section is “{selected}”. noroi renders everything into an off-screen cell buffer and \
-         writes only the cells that changed each frame, so redraws are cheap and flicker-free — \
-         the same idea curses pioneered.\n\nEverything you see is drawn with zero external crates: \
-         geometry, styling, the 16/256/true-color model, Unicode width handling, the input \
-         parser, the layout engine and these widgets are all pure Rust.",
-    );
-    let para = Paragraph::new(body_text).wrap(Wrap { trim: true }).block(
-        Block::bordered()
-            .border_type(BorderType::Plain)
-            .title(Line::raw(" Paragraph "))
-            .padding(Padding::symmetric(1, 0)),
-    );
+        .map(|i| SECTIONS[i])
+        .unwrap_or(SECTIONS[0]);
+    let block = t
+        .panel(false)
+        .title(Line::styled(format!(" {name} "), t.title))
+        .padding(Padding::symmetric(1, 0));
+    let body = Text::from_lines([
+        Line::styled(blurb, t.text),
+        Line::raw(""),
+        Line::from_spans([
+            Span::styled("zero external crates", t.accent),
+            Span::styled("  ·  core + alloc + std only", t.dim),
+        ]),
+    ]);
+    let para = Paragraph::new(body).wrap(Wrap { trim: true }).block(block);
     frame.render_widget(&para, r.paragraph);
+}
 
-    // Gauge.
+fn draw_gauge(frame: &mut Frame<'_>, app: &App, r: &Regions) {
+    let t = app.theme;
     let gauge = Gauge::new()
         .ratio(app.gauge)
-        .filled_style(Style::new().fg(Color::Black).bg(accent()))
-        .unfilled_style(Style::new().fg(Color::Gray).bg(Color::DarkGray))
-        .block(Block::bordered().title(Line::raw(" Gauge  (+/-) ")));
+        .filled_style(t.gauge_filled)
+        .unfilled_style(t.gauge_unfilled)
+        .block(
+            t.panel(false)
+                .title(Line::styled(" Gauge  (+/-) ", t.title)),
+        );
     frame.render_widget(&gauge, r.gauge);
+}
 
-    // Text input (line editor).
-    let input_focused = app.focus == Focus::Input;
-    let input_block = Block::bordered()
-        .border_style(border_style(input_focused))
-        .title(Line::styled(" Text input ", title_style(input_focused)));
-    let input_inner = input_block.inner(r.input);
-    frame.render_widget(&input_block, r.input);
-    let cursor = app.editor.render(
-        input_inner,
-        frame.buffer_mut(),
-        Style::new().fg(Color::White),
-    );
-    if input_focused {
+fn draw_prompt(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
+    let t = app.theme;
+    let focused = app.focus == Focus::Prompt;
+    let block = t.panel(focused).title(Line::styled(
+        " Prompt ",
+        if focused { t.accent } else { t.title },
+    ));
+    let inner = block.inner(r.prompt);
+    frame.render_widget(&block, r.prompt);
+    let cursor = app.editor.render(inner, frame.buffer_mut(), t.text);
+    if focused {
         frame.set_cursor(cursor);
     }
+}
 
-    // Buttons.
-    let ok = Button::new("OK  (Enter)").focused(app.focus == Focus::ButtonOk);
+fn draw_buttons(frame: &mut Frame<'_>, app: &App, r: &Regions) {
+    let t = app.theme;
+    let ok = Button::new("Apply")
+        .style(t.button)
+        .focus_style(t.button_focused)
+        .focused(app.focus == Focus::ButtonOk);
     let cancel = Button::new("Cancel")
-        .style(Style::new().fg(Color::White).bg(Color::Red))
-        .focus_style(
-            Style::new()
-                .fg(Color::White)
-                .bg(Color::LightRed)
-                .attrs(Attributes::BOLD),
-        )
+        .style(t.button)
+        .focus_style(t.button_focused)
         .focused(app.focus == Focus::ButtonCancel);
     frame.render_widget(&ok, centered_button(r.button_ok));
     frame.render_widget(&cancel, centered_button(r.button_cancel));
-
-    // Status bar.
-    let mouse = app
-        .last_mouse
-        .map(|(x, y)| format!("  mouse@{x},{y}"))
-        .unwrap_or_default();
-    let status = Paragraph::new(Line::from_spans([
-        Span::styled(" status ", Style::new().fg(Color::Black).bg(Color::Green)),
-        Span::raw(" "),
-        Span::raw(app.status.clone()),
-        Span::styled(mouse, Style::new().fg(Color::DarkGray)),
-    ]))
-    .style(Style::new().bg(Color::Black).fg(Color::Gray));
-    frame.render_widget(&status, r.status);
-
-    // Overlays.
-    if app.show_help {
-        draw_help(frame, area);
-    } else if app.show_dialog {
-        draw_dialog(frame, area);
-    }
 }
 
-fn draw_dialog(frame: &mut Frame<'_>, area: Rect) {
-    let dialog = area.centered(noroi::geom::Size::new(44, 9));
-    frame.render_widget(&Clear::new(), dialog);
-    let block = Block::bordered()
-        .border_type(BorderType::Double)
-        .border_style(Style::new().fg(Color::LightYellow))
-        .style(Style::new().bg(Color::Blue))
-        .title(Line::styled(
-            " Dialog ",
-            Style::new().fg(Color::White).attrs(Attributes::BOLD),
-        ))
+fn draw_status(frame: &mut Frame<'_>, app: &App, r: &Regions) {
+    let t = app.theme;
+    // Fill the row, then place the message left and the key hints right.
+    frame.render_widget(&Clear::new().style(t.background), r.status);
+    let left = Line::from_spans([
+        Span::styled(" 呪 ", t.selection),
+        Span::raw(" "),
+        Span::styled(app.status.clone(), t.text),
+    ]);
+    frame.render_widget(&Paragraph::new(left).style(t.background), r.status);
+
+    let mouse = app
+        .last_mouse
+        .map(|(x, y)| format!("{x},{y}  "))
+        .unwrap_or_default();
+    let hints = Line::from_spans([
+        Span::styled(mouse, t.dim),
+        Span::styled("tab ↑↓ · m d ? · q ", t.dim),
+    ])
+    .alignment(Alignment::Right);
+    frame.render_widget(&Paragraph::new(hints).style(t.background), r.status);
+}
+
+fn draw_dialog(frame: &mut Frame<'_>, t: Theme, area: Rect) {
+    let dialog = area.centered(Size::new(46, 9));
+    frame.render_widget(&Clear::new().style(t.background), dialog);
+    let block = t
+        .panel(true)
+        .title(Line::styled(" Confirm ", t.title))
         .padding(Padding::uniform(1));
     let inner = block.inner(dialog);
     frame.render_widget(&block, dialog);
-    let text = Paragraph::new(
-        "This is a modal dialog: a Clear widget blanks the region, then a Block \
-         draws over it. Press any key to dismiss.",
-    )
-    .wrap(Wrap { trim: true })
-    .style(Style::new().fg(Color::White).bg(Color::Blue));
-    frame.render_widget(&text, inner);
+    let text = Text::from_lines([
+        Line::styled("A modal dialog: Clear blanks the region, then a", t.text),
+        Line::styled(
+            "Block draws over it. Nothing behind bleeds through.",
+            t.text,
+        ),
+        Line::raw(""),
+        Line::from_spans([
+            Span::styled("Press any key", t.accent),
+            Span::styled(" to dismiss.", t.dim),
+        ]),
+    ]);
+    frame.render_widget(&Paragraph::new(text).wrap(Wrap { trim: true }), inner);
 }
 
-fn draw_help(frame: &mut Frame<'_>, area: Rect) {
-    let popup = area.centered(noroi::geom::Size::new(52, 14));
-    frame.render_widget(&Clear::new(), popup);
-    let block = Block::bordered()
-        .border_type(BorderType::Thick)
-        .border_style(Style::new().fg(Color::LightGreen))
-        .style(Style::new().bg(Color::Black))
-        .title(Line::styled(
-            " Help ",
-            Style::new().fg(Color::LightGreen).attrs(Attributes::BOLD),
-        ));
+fn draw_help(frame: &mut Frame<'_>, t: Theme, area: Rect) {
+    let popup = area.centered(Size::new(50, 14));
+    frame.render_widget(&Clear::new().style(t.background), popup);
+    let block = t
+        .panel(true)
+        .title(Line::styled(" Help ", t.title))
+        .padding(Padding::uniform(1));
     let inner = block.inner(popup);
     frame.render_widget(&block, popup);
+
+    let key = |k: &str, desc: &str| {
+        Line::from_spans([
+            Span::styled(format!("{k:<14}"), t.accent),
+            Span::styled(desc.to_string(), t.text),
+        ])
+    };
     let lines = [
-        Line::from_spans([
-            Span::styled("Tab / Shift-Tab", key_style()),
-            Span::raw("  move focus"),
-        ]),
-        Line::from_spans([
-            Span::styled("↑ / ↓", key_style()),
-            Span::raw("          list selection"),
-        ]),
-        Line::from_spans([
-            Span::styled("type / Enter", key_style()),
-            Span::raw("   edit / submit text field"),
-        ]),
-        Line::from_spans([
-            Span::styled("+ / -", key_style()),
-            Span::raw("          adjust the gauge"),
-        ]),
-        Line::from_spans([
-            Span::styled("mouse", key_style()),
-            Span::raw("          click controls, scroll list"),
-        ]),
-        Line::from_spans([
-            Span::styled("d / ?", key_style()),
-            Span::raw("          dialog / this help"),
-        ]),
-        Line::from_spans([
-            Span::styled("q / Ctrl-C", key_style()),
-            Span::raw("     quit"),
-        ]),
+        key("Tab / S-Tab", "move focus"),
+        key("↑ / ↓", "list selection"),
+        key("type / Enter", "edit / submit the prompt"),
+        key("+ / -", "adjust the gauge"),
+        key("m", "switch theme (ofuda / mono)"),
+        key("mouse", "click controls, scroll the list"),
+        key("d / ?", "dialog / this help"),
+        key("q / Ctrl-C", "quit"),
         Line::raw(""),
-        Line::raw("Press any key to close.").centered(),
+        Line::styled("Press any key to close.", t.dim).alignment(Alignment::Center),
     ];
-    let para = Paragraph::new(noroi::widget::Text::from_lines(lines))
-        .style(Style::new().fg(Color::Gray).bg(Color::Black));
-    frame.render_widget(&para, inner);
-}
-
-fn key_style() -> Style {
-    Style::new().fg(Color::LightCyan).attrs(Attributes::BOLD)
-}
-
-fn border_style(focused: bool) -> Style {
-    if focused {
-        Style::new().fg(accent()).attrs(Attributes::BOLD)
-    } else {
-        Style::new().fg(Color::DarkGray)
-    }
-}
-
-fn title_style(focused: bool) -> Style {
-    if focused {
-        Style::new().fg(accent()).attrs(Attributes::BOLD)
-    } else {
-        Style::new().fg(Color::Gray)
-    }
+    frame.render_widget(&Paragraph::new(Text::from_lines(lines)), inner);
 }
 
 /// Center a one-row button vertically inside its 3-row cell.
@@ -513,16 +563,15 @@ fn main() -> io::Result<()> {
         let r = regions(area);
         terminal.draw(|frame| draw(frame, &mut app, &r))?;
 
-        // Wait up to a frame interval; a timeout drives the gauge animation.
         match terminal.events().poll(Some(Duration::from_millis(80)))? {
             Some(Event::Key(key)) => app.on_key(key),
             Some(Event::Mouse(m)) => app.on_mouse(m, &r),
             Some(Event::Paste(text)) => {
-                if app.focus == Focus::Input {
+                if app.focus == Focus::Prompt {
                     app.editor.insert_str(&text);
                 }
             }
-            Some(Event::Resize(_, _)) => { /* buffers resize automatically on next draw */ }
+            Some(Event::Resize(_, _)) => {}
             Some(_) => {}
             None => app.tick(),
         }

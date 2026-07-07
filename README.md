@@ -40,6 +40,9 @@ one-shot text view up to a multi-panel, animated, threaded application.
   `LineEditor` with history and emacs-style keybindings.
 - **Threaded events.** Input is read on a background thread and delivered over a
   channel; resize is detected without a `SIGWINCH` handler.
+- **Theming.** A [`Theme`] collects a UI's style *roles* (text, accent, border,
+  selection…) into one value, so a whole app shares an identity and re-skins by
+  swapping a single theme. Ships with `ofuda` (the default) and `mono`.
 - **C bindings.** An optional C ABI (`capi` feature) with a hand-written header.
 
 ## Quick start (Rust)
@@ -94,6 +97,22 @@ Build just the core for embedding:
 
 ```sh
 cargo build --no-default-features
+```
+
+## Theming
+
+Widgets take explicit styles, but a [`Theme`] gives a whole app one identity you
+can swap at runtime. The default `ofuda` theme — sumi ink, washi paper and a
+vermilion seal, after noroi's namesake 呪い ("curse") — is what `noroidemo`
+wears; press `m` in the demo to re-skin it as `mono` (colorless, for monochrome
+or `TERM=dumb`). Panels thicken and turn vermilion when focused.
+
+```rust
+use noroi::theme::Theme;
+
+let theme = Theme::ofuda();                       // or Theme::mono()
+let panel = theme.panel(is_focused).title("Sections");
+// role styles: theme.text, theme.accent, theme.selection, theme.title, …
 ```
 
 ## C bindings
