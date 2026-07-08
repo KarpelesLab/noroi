@@ -2,33 +2,40 @@
 //!
 //! Run it with `cargo run --bin noroidemo`. It draws a dashboard exercising the
 //! layout engine, [`Block`], [`Paragraph`], [`List`], [`Gauge`], [`Button`], the
-//! [`LineEditor`], a floating dialog, and the [`Theme`] system.
+//! [`LineEditor`], the [`Spinner`], a floating dialog, the [`Theme`] system and
+//! the animation primitives.
 //!
 //! The look is "ofuda" — sumi ink, washi paper and a vermilion seal, after
 //! noroi's namesake 呪い ("curse"). Press `m` to reskin it as the monochrome
-//! theme; focus a panel and its border thickens and turns vermilion.
+//! theme; focus a panel and its border thickens, reddens and gently breathes.
+//!
+//! Motion: the gauge eases to its target instead of jumping, a spinner marks the
+//! live loop, and the focused border pulses. Set `NOROI_REDUCED_MOTION=1` to
+//! hold everything still.
 //!
 //! Controls:
 //! * `Tab` / `Shift-Tab` — move focus between the list, the prompt and the buttons.
 //! * `↑`/`↓` — move the list selection (when the list is focused).
 //! * type — edit the prompt (when it is focused); `Enter` submits it.
-//! * `+` / `-` — nudge the gauge; it also animates on its own.
+//! * `+` / `-` — set the gauge target; it eases there.
 //! * `Enter` / click — activate the focused button, or click any control.
 //! * `m` — switch theme · `d` — dialog · `?` — help.
 //! * `q` / `Ctrl-C` / `Esc` (twice) — quit.
 
+use noroi::anim::{Easing, Pulse, Tween};
 use noroi::event::{Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseKind};
 use noroi::geom::{Point, Rect, Size};
 use noroi::layout::{Constraint, column, row};
 use noroi::lineedit::{LineEditor, LineOutcome};
+use noroi::style::{Color, Style};
 use noroi::terminal::{Frame, Terminal};
 use noroi::theme::Theme;
 use noroi::widget::{
-    Alignment, Button, Clear, Gauge, Line, List, ListItem, ListState, Padding, Paragraph, Span,
-    Text, Wrap,
+    Alignment, Block, Button, Clear, Gauge, Line, List, ListItem, ListState, Padding, Paragraph,
+    Span, Spinner, Text, Wrap,
 };
 use std::io;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Which control currently has keyboard focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,8 +77,8 @@ const SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Widgets",
-        "Blocks, paragraphs, lists, gauges, buttons and prompts. Each one paints \
-         into a buffer and clips itself; none of them touch the terminal directly.",
+        "Blocks, paragraphs, lists, gauges, buttons, spinners and prompts. Each one \
+         paints into a buffer and clips itself; none of them touch the terminal.",
     ),
     (
         "Layout engine",
@@ -89,14 +96,14 @@ const SECTIONS: &[(&str, &str)] = &[
          prompt below is one — focus it with Tab and type.",
     ),
     (
+        "Animation",
+        "Easing, tweens and pulses advance by a time delta the app supplies. The \
+         gauge eases to its target; the spinner and focus border are live.",
+    ),
+    (
         "Colors & styles",
         "16, 256 and 24-bit color, downgraded to fit the terminal. Press m to \
          reskin this demo between the ofuda and mono themes.",
-    ),
-    (
-        "Full-screen mode",
-        "Opening a terminal enters raw mode and the alternate screen, then restores \
-         everything when it closes — even on a panic.",
     ),
     (
         "Dialogs & popups",
@@ -168,11 +175,16 @@ fn regions(area: Rect) -> Regions {
 struct App {
     theme: Theme,
     mono: bool,
+    reduced_motion: bool,
     focus: Focus,
     list_state: ListState,
     editor: LineEditor,
-    gauge: f32,
-    gauge_dir: f32,
+    // Animation state.
+    gauge: Tween,
+    focus_pulse: Pulse,
+    spinner: Spinner,
+    auto_dwell: f32,
+    manual_hold: f32,
     status: String,
     show_dialog: bool,
     show_help: bool,
@@ -183,16 +195,27 @@ struct App {
 
 impl App {
     fn new() -> Self {
+        let reduced_motion = std::env::var_os("NOROI_REDUCED_MOTION").is_some();
         let mut list_state = ListState::new();
         list_state.select(Some(0));
+        let gauge = if reduced_motion {
+            Tween::settled(0.62)
+        } else {
+            // Reveal the gauge from empty on start.
+            Tween::new(0.0, 0.62, 1.4, Easing::EaseInOutCubic)
+        };
         App {
             theme: Theme::ofuda(),
             mono: false,
+            reduced_motion,
             focus: Focus::List,
             list_state,
             editor: LineEditor::new(),
-            gauge: 0.42,
-            gauge_dir: 0.01,
+            gauge,
+            focus_pulse: Pulse::new(1.6),
+            spinner: Spinner::new().label("live"),
+            auto_dwell: 0.0,
+            manual_hold: 0.0,
             status: "Select a section, or press ? for help.".to_string(),
             show_dialog: false,
             show_help: false,
@@ -202,15 +225,38 @@ impl App {
         }
     }
 
-    fn tick(&mut self) {
-        // Ping-pong the gauge to show smooth sub-cell animation.
-        self.gauge += self.gauge_dir;
-        if self.gauge >= 1.0 {
-            self.gauge = 1.0;
-            self.gauge_dir = -self.gauge_dir.abs();
-        } else if self.gauge <= 0.0 {
-            self.gauge = 0.0;
-            self.gauge_dir = self.gauge_dir.abs();
+    /// Advance every animation by `dt` seconds.
+    fn advance(&mut self, dt: f32) {
+        if self.reduced_motion {
+            return;
+        }
+        self.spinner.advance(dt);
+        self.focus_pulse.advance(dt);
+        self.gauge.advance(dt);
+        if self.manual_hold > 0.0 {
+            self.manual_hold -= dt;
+        } else if self.gauge.finished() {
+            // Auto-cycle the target after a short dwell, to show easing.
+            self.auto_dwell += dt;
+            if self.auto_dwell > 0.7 {
+                self.auto_dwell = 0.0;
+                let next = if self.gauge.target() > 0.6 {
+                    0.18
+                } else {
+                    0.92
+                };
+                self.gauge.retarget(next);
+            }
+        }
+    }
+
+    fn set_gauge_target(&mut self, target: f32) {
+        let target = target.clamp(0.0, 1.0);
+        if self.reduced_motion {
+            self.gauge.snap(target);
+        } else {
+            self.gauge.retarget(target);
+            self.manual_hold = 2.0; // pause the auto-cycle after manual input
         }
     }
 
@@ -276,8 +322,10 @@ impl App {
             KeyCode::Char('m') if self.focus != Focus::Prompt => self.toggle_theme(),
             KeyCode::Tab => self.focus = self.focus.cycle(true),
             KeyCode::BackTab => self.focus = self.focus.cycle(false),
-            KeyCode::Char('+') | KeyCode::Char('=') => self.gauge = (self.gauge + 0.05).min(1.0),
-            KeyCode::Char('-') => self.gauge = (self.gauge - 0.05).max(0.0),
+            KeyCode::Char('+') | KeyCode::Char('=') => {
+                self.set_gauge_target(self.gauge.target() + 0.08)
+            }
+            KeyCode::Char('-') => self.set_gauge_target(self.gauge.target() - 0.08),
             KeyCode::Up if self.focus == Focus::List => self.list_state.previous(SECTIONS.len()),
             KeyCode::Down if self.focus == Focus::List => self.list_state.next(SECTIONS.len()),
             KeyCode::Enter => self.activate_focus(),
@@ -328,6 +376,19 @@ impl App {
             _ => {}
         }
     }
+
+    /// A themed panel whose focused border gently pulses (ofuda only).
+    fn panel(&self, focused: bool) -> Block {
+        let block = self.theme.panel(focused);
+        if focused && !self.mono && !self.reduced_motion {
+            let t = self.focus_pulse.value();
+            // Breathe between vermilion and a warmer ember.
+            let color = Color::Rgb(193, 39, 45).lerp(Color::Rgb(226, 138, 96), t);
+            block.border_style(Style::new().fg(color).bold())
+        } else {
+            block
+        }
+    }
 }
 
 fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
@@ -335,7 +396,7 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
     let area = frame.area();
     frame.render_widget(&Clear::new().style(t.background), area);
 
-    draw_title(frame, t, r.title);
+    draw_title(frame, app, r.title);
     draw_sidebar(frame, app, r);
     draw_palette(frame, t, r.palette);
     draw_paragraph(frame, app, r);
@@ -351,21 +412,29 @@ fn draw(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
     }
 }
 
-/// The signature: a stamped hanko seal, then a gold tagline.
-fn draw_title(frame: &mut Frame<'_>, t: Theme, area: Rect) {
+/// The signature: a stamped hanko seal and gold tagline, with a live spinner
+/// pinned to the right edge.
+fn draw_title(frame: &mut Frame<'_>, app: &App, area: Rect) {
+    let t = app.theme;
     let title = Line::from_spans([
         Span::styled(" 呪 noroi ", t.selection),
         Span::raw("  "),
         Span::styled("the terminal, cursed", t.accent_alt),
     ]);
     frame.render_widget(&Paragraph::new(title).style(t.background), area);
+
+    let spinner = app.spinner.clone().style(t.accent).label_style(t.dim);
+    let w = spinner.width();
+    if area.width > w + 1 {
+        let x = area.right() - w - 1;
+        frame.render_widget(&spinner, Rect::new(x, area.y, w, 1));
+    }
 }
 
 fn draw_sidebar(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
     let t = app.theme;
     let focused = app.focus == Focus::List;
     let block = app
-        .theme
         .panel(focused)
         .title(Line::styled(" Sections ", t.title));
     let items = SECTIONS.iter().map(|(name, _)| ListItem::new(*name));
@@ -428,7 +497,7 @@ fn draw_paragraph(frame: &mut Frame<'_>, app: &App, r: &Regions) {
 fn draw_gauge(frame: &mut Frame<'_>, app: &App, r: &Regions) {
     let t = app.theme;
     let gauge = Gauge::new()
-        .ratio(app.gauge)
+        .ratio(app.gauge.value())
         .filled_style(t.gauge_filled)
         .unfilled_style(t.gauge_unfilled)
         .block(
@@ -441,7 +510,7 @@ fn draw_gauge(frame: &mut Frame<'_>, app: &App, r: &Regions) {
 fn draw_prompt(frame: &mut Frame<'_>, app: &mut App, r: &Regions) {
     let t = app.theme;
     let focused = app.focus == Focus::Prompt;
-    let block = t.panel(focused).title(Line::styled(
+    let block = app.panel(focused).title(Line::styled(
         " Prompt ",
         if focused { t.accent } else { t.title },
     ));
@@ -469,7 +538,6 @@ fn draw_buttons(frame: &mut Frame<'_>, app: &App, r: &Regions) {
 
 fn draw_status(frame: &mut Frame<'_>, app: &App, r: &Regions) {
     let t = app.theme;
-    // Fill the row, then place the message left and the key hints right.
     frame.render_widget(&Clear::new().style(t.background), r.status);
     let left = Line::from_spans([
         Span::styled(" 呪 ", t.selection),
@@ -515,7 +583,7 @@ fn draw_dialog(frame: &mut Frame<'_>, t: Theme, area: Rect) {
 }
 
 fn draw_help(frame: &mut Frame<'_>, t: Theme, area: Rect) {
-    let popup = area.centered(Size::new(50, 14));
+    let popup = area.centered(Size::new(52, 15));
     frame.render_widget(&Clear::new().style(t.background), popup);
     let block = t
         .panel(true)
@@ -534,12 +602,13 @@ fn draw_help(frame: &mut Frame<'_>, t: Theme, area: Rect) {
         key("Tab / S-Tab", "move focus"),
         key("↑ / ↓", "list selection"),
         key("type / Enter", "edit / submit the prompt"),
-        key("+ / -", "adjust the gauge"),
+        key("+ / -", "set the gauge target (it eases there)"),
         key("m", "switch theme (ofuda / mono)"),
         key("mouse", "click controls, scroll the list"),
         key("d / ?", "dialog / this help"),
         key("q / Ctrl-C", "quit"),
         Line::raw(""),
+        Line::styled("Set NOROI_REDUCED_MOTION=1 to hold motion still.", t.dim),
         Line::styled("Press any key to close.", t.dim).alignment(Alignment::Center),
     ];
     frame.render_widget(&Paragraph::new(Text::from_lines(lines)), inner);
@@ -557,13 +626,21 @@ fn centered_button(cell: Rect) -> Rect {
 fn main() -> io::Result<()> {
     let mut terminal = Terminal::open()?;
     let mut app = App::new();
+    let mut last = Instant::now();
 
     while !app.should_quit {
         let area = terminal.area();
         let r = regions(area);
         terminal.draw(|frame| draw(frame, &mut app, &r))?;
 
-        match terminal.events().poll(Some(Duration::from_millis(80)))? {
+        // ~30 fps: a timeout drives the animations; input arrives in between.
+        let event = terminal.events().poll(Some(Duration::from_millis(33)))?;
+        let now = Instant::now();
+        let dt = now.duration_since(last).as_secs_f32();
+        last = now;
+        app.advance(dt);
+
+        match event {
             Some(Event::Key(key)) => app.on_key(key),
             Some(Event::Mouse(m)) => app.on_mouse(m, &r),
             Some(Event::Paste(text)) => {
@@ -573,7 +650,7 @@ fn main() -> io::Result<()> {
             }
             Some(Event::Resize(_, _)) => {}
             Some(_) => {}
-            None => app.tick(),
+            None => {}
         }
     }
     Ok(())

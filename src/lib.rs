@@ -54,6 +54,7 @@
 
 extern crate alloc;
 
+pub mod anim;
 pub mod ansi;
 pub mod buffer;
 pub mod event;
@@ -76,6 +77,7 @@ mod sys;
 #[cfg(feature = "std")]
 pub mod terminal;
 
+pub use anim::{Easing, Pulse, Tween};
 pub use buffer::{Buffer, Cell};
 pub use event::{Event, KeyCode, KeyEvent, Modifiers, MouseButton, MouseEvent, MouseKind};
 pub use geom::{Point, Rect, Size};

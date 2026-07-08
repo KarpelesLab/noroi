@@ -38,6 +38,9 @@ one-shot text view up to a multi-panel, animated, threaded application.
   (word wrap, scroll, alignment), `List` (selectable, scrollable), `Gauge`
   (sub-cell precision), `Button`, `Clear` (for popups), and a reusable
   `LineEditor` with history and emacs-style keybindings.
+- **Animation.** Clock-free easing, [`Tween`] and [`Pulse`] primitives plus a
+  [`Spinner`] widget: the app feeds a time delta each frame, animators yield a
+  value, widgets stay pure. Honors reduced-motion.
 - **Threaded events.** Input is read on a background thread and delivered over a
   channel; resize is detected without a `SIGWINCH` handler.
 - **Theming.** A [`Theme`] collects a UI's style *roles* (text, accent, border,
@@ -114,6 +117,28 @@ let theme = Theme::ofuda();                       // or Theme::mono()
 let panel = theme.panel(is_focused).title("Sections");
 // role styles: theme.text, theme.accent, theme.selection, theme.title, …
 ```
+
+## Animation
+
+The `#![no_std]` core has no clock, so animation is *driven*: the app measures
+the seconds between frames and calls `advance(dt)` on each animator, which yields
+a value the app hands to an otherwise-pure widget. This keeps rendering diffable
+and makes motion (and reduced-motion) trivial to control.
+
+```rust
+use noroi::anim::{Easing, Tween};
+
+let mut gauge = Tween::new(0.0, 0.6, 1.4, Easing::EaseInOutCubic);
+// each frame:
+gauge.advance(dt);              // dt = seconds since last frame
+gauge.retarget(0.9);            // glide smoothly to a new value
+let ratio = gauge.value();      // feed to Gauge::ratio(..)
+```
+
+`Pulse` is a looping breathe/blink oscillator, and [`Spinner`] is a frame-based
+busy indicator (`Spinner::DOTS`, `LINE`, `ARC`, `CIRCLE`, `BAR`). In `noroidemo`
+the gauge eases to its target, a spinner marks the live loop, and the focused
+panel border breathes; `NOROI_REDUCED_MOTION=1` holds it all still.
 
 ## C bindings
 

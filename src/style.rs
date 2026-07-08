@@ -86,6 +86,31 @@ impl Color {
         }
     }
 
+    /// Interpolate toward `other` at `t` (clamped to `0..=1`).
+    ///
+    /// Only [`Color::Rgb`] pairs blend smoothly; for any other combination this
+    /// snaps at the halfway point, which is enough for the pulsing/blending
+    /// effects the animation module drives. Feed it two `Rgb` values for a true
+    /// gradient.
+    pub fn lerp(self, other: Color, t: f32) -> Color {
+        match (self, other) {
+            (Color::Rgb(r1, g1, b1), Color::Rgb(r2, g2, b2)) => {
+                let mix = |a: u8, b: u8| {
+                    let v = a as f32 + (b as f32 - a as f32) * t.clamp(0.0, 1.0);
+                    v.clamp(0.0, 255.0) as u8
+                };
+                Color::Rgb(mix(r1, r2), mix(g1, g2), mix(b1, b2))
+            }
+            _ => {
+                if t < 0.5 {
+                    self
+                } else {
+                    other
+                }
+            }
+        }
+    }
+
     /// Map any color onto the 256-color palette (best effort).
     pub fn to_indexed(self) -> u8 {
         match self {

@@ -24,6 +24,7 @@ mod clear;
 mod gauge;
 mod list;
 mod paragraph;
+mod spinner;
 mod text;
 
 pub use block::{Block, BorderType, Borders, Padding};
@@ -32,6 +33,7 @@ pub use clear::Clear;
 pub use gauge::Gauge;
 pub use list::{List, ListItem, ListState};
 pub use paragraph::{Paragraph, Wrap};
+pub use spinner::Spinner;
 pub use text::{Line, Span, Text};
 
 /// Horizontal alignment for text and titles.
